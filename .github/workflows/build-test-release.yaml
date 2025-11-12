@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: 2025 The Linux Foundation
 
 # Runs on a new pull request, performs build and runs tests
-name: 'Python Build/Test/Release'
+name: 'Build/Test/Release'
 
 # yamllint disable-line rule:truthy
 on:
@@ -262,7 +262,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_TOKEN }}
 
       # Extract metadata for tags and labels
       - name: Extract metadata
@@ -415,20 +415,14 @@ jobs:
         with:
           asset_paths: '["${{ needs.python-build.outputs.artefact_path }}/**"]'
 
-  integration-test:
-    name: 'Integration Test (${{ matrix.deploy }})'
+  integration-test-uvx:
+    name: 'Integration Test (uvx - published package)'
     runs-on: 'ubuntu-latest'
     needs:
       - 'tag-validate'
       - 'pypi'
-      - 'docker-publish'
-    strategy:
-      fail-fast: false
-      matrix:
-        deploy: ['uvx', 'docker']
     permissions:
       contents: read
-      packages: read
     timeout-minutes: 10
     steps:
       # Harden the runner used by this workflow
@@ -437,17 +431,14 @@ jobs:
           egress-policy: 'audit'
 
       - name: 'Install uv'
-        if: matrix.deploy == 'uvx'
         uses: astral-sh/setup-uv@85856786d1ce8acfbcc2f13a5f3fbd6b938f9f41 # v7.1.2
 
       - name: 'Wait for PyPI package propagation'
-        if: matrix.deploy == 'uvx'
         run: |
           echo "Waiting 60 seconds for PyPI package to propagate..."
           sleep 60
 
-      - name: 'Verify published version matches tag (uvx)'
-        if: matrix.deploy == 'uvx'
+      - name: 'Verify published version matches tag'
         run: |
           TAG_VERSION="${{ needs.tag-validate.outputs.tag }}"
           # Remove 'v' prefix if present
@@ -470,15 +461,6 @@ jobs:
 
           echo "✅ Version verification passed"
 
-      - name: 'Verify Docker image version (docker)'
-        if: matrix.deploy == 'docker'
-        run: |
-          TAG_VERSION="${{ needs.tag-validate.outputs.tag }}"
-          echo "Testing Docker image: ghcr.io/${{ env.IMAGE_NAME }}:${TAG_VERSION}"
-          echo "Expected tag: ${TAG_VERSION}"
-          echo "✅ Docker image tag verification passed"
-
-      # Set up go-httpbin for reliable testing
       # Checkout for using the action
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
@@ -493,7 +475,7 @@ jobs:
       - name: 'Test: Basic GET request'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/get'
           http_method: 'GET'
           expected_http_code: '200'
@@ -503,7 +485,7 @@ jobs:
       - name: 'Test: POST with JSON data'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/post'
           http_method: 'POST'
           request_body: '{"test": "data", "number": 42}'
@@ -514,7 +496,7 @@ jobs:
       - name: 'Test: Response validation with regex'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/json'
           expected_http_code: '200'
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
@@ -524,7 +506,7 @@ jobs:
       - name: 'Test: Custom headers'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/headers'
           request_headers: '{"X-Custom-Header": "test-value"}'
           expected_http_code: '200'
@@ -533,7 +515,7 @@ jobs:
       - name: 'Test: Response time validation'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/delay/1'
           expected_http_code: '200'
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
@@ -543,7 +525,7 @@ jobs:
       - name: 'Test: PUT request'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/put'
           http_method: 'PUT'
           request_body: '{"updated": true}'
@@ -553,7 +535,7 @@ jobs:
       - name: 'Test: DELETE request'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/delete'
           http_method: 'DELETE'
           expected_http_code: '200'
@@ -562,7 +544,7 @@ jobs:
       - name: 'Test: Status codes (404)'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/status/404'
           expected_http_code: '404'
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
@@ -571,7 +553,7 @@ jobs:
       - name: 'Test: Status codes (503)'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/status/503'
           expected_http_code: '503'
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
@@ -580,8 +562,118 @@ jobs:
 
       - name: 'Integration test summary'
         run: |
-          echo "✅ All integration tests passed successfully!"
+          echo "✅ All UVX integration tests passed successfully!"
           echo "📦 Package version: ${{ needs.tag-validate.outputs.tag }}"
-          echo "🚀 Deployment method: ${{ matrix.deploy }}"
-          echo "🎯 Published artifacts verified working"
+          echo "🚀 Deployment method: uvx"
+          echo "🎯 Published PyPI package verified working"
+          echo "🔒 Tested with self-hosted go-httpbin (HTTPS with CA cert)"
+
+  integration-test-docker:
+    name: 'Integration Test (docker - published image)'
+    runs-on: 'ubuntu-latest'
+    needs:
+      - 'tag-validate'
+      - 'docker-publish'
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 10
+    steps:
+      # Harden the runner used by this workflow
+      - uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
+        with:
+          egress-policy: 'audit'
+
+      - name: 'Login to Container Registry'
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: 'Pull published Docker image'
+        run: |
+          TAG_VERSION="${{ needs.tag-validate.outputs.tag }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG_VERSION}"
+          echo "Pulling Docker image: ${IMAGE}"
+          docker pull "${IMAGE}"
+          docker tag "${IMAGE}" http-api-tool:test
+          echo "✅ Docker image pulled successfully"
+
+      - name: 'Setup go-httpbin HTTPS service'
+        uses: lfreleng-actions/go-httpbin-action@fd9c3701056fc2e667542ac66b4a63c44faea6c5 # v0.1.0
+        id: go-httpbin
+        with:
+          debug: 'true'
+          port: '8080'
+
+      - name: 'Test: Basic GET request'
+        run: |
+          docker run --rm --network host \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:/tmp/ca-bundle.pem:ro" \
+            http-api-tool:test \
+            test \
+            --url "https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/get" \
+            --ca-bundle-path "/tmp/ca-bundle.pem" \
+            --expected-http-code 200 \
+            --curl-timeout 30 \
+            --debug
+
+      - name: 'Test: POST with JSON data'
+        run: |
+          docker run --rm --network host \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:/tmp/ca-bundle.pem:ro" \
+            http-api-tool:test \
+            test \
+            --url "https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/post" \
+            --http-method POST \
+            --request-body '{"test": "data", "number": 42}' \
+            --content-type "application/json" \
+            --ca-bundle-path "/tmp/ca-bundle.pem" \
+            --expected-http-code 200 \
+            --debug
+
+      - name: 'Test: Response validation with regex'
+        run: |
+          docker run --rm --network host \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:/tmp/ca-bundle.pem:ro" \
+            http-api-tool:test \
+            test \
+            --url "https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/json" \
+            --ca-bundle-path "/tmp/ca-bundle.pem" \
+            --expected-http-code 200 \
+            --regex '"slideshow"' \
+            --curl-timeout 30 \
+            --debug
+
+      - name: 'Test: Custom headers'
+        run: |
+          docker run --rm --network host \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:/tmp/ca-bundle.pem:ro" \
+            http-api-tool:test \
+            test \
+            --url "https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/headers" \
+            --request-headers '{"X-Custom-Header": "test-value"}' \
+            --ca-bundle-path "/tmp/ca-bundle.pem" \
+            --expected-http-code 200 \
+            --debug
+
+      - name: 'Test: Status codes (404)'
+        run: |
+          docker run --rm --network host \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:/tmp/ca-bundle.pem:ro" \
+            http-api-tool:test \
+            test \
+            --url "https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/status/404" \
+            --ca-bundle-path "/tmp/ca-bundle.pem" \
+            --expected-http-code 404 \
+            --retries 1 \
+            --debug
+
+      - name: 'Integration test summary'
+        run: |
+          echo "✅ All Docker integration tests passed successfully!"
+          echo "📦 Package version: ${{ needs.tag-validate.outputs.tag }}"
+          echo "🚀 Deployment method: docker"
+          echo "🎯 Published Docker image verified working"
           echo "🔒 Tested with self-hosted go-httpbin (HTTPS with CA cert)"

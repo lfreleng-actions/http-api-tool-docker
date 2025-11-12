@@ -74,33 +74,23 @@ uv pip list
 
 ```bash
 # Run all tests
-make test
+uv run pytest tests/ -v
 
 # Run with coverage
-make test-cov
+uv run pytest tests/ --cov=http_api_tool --cov-report=html --cov-report=term
 
 # Run linting
-make lint
+uv run pre-commit run --all-files
 
-# Run full CI locally
-make ci
+# Format code
+uv run pre-commit run --all-files ruff-format
+
+# Run integration tests locally
+./scripts/test-pypi-integration-local.sh
+
+# Run integration tests against PyPI
+./scripts/test-pypi-integration.sh
 ```
-
----
-
-## Makefile Shortcuts
-
-| Command | Description |
-|---------|-------------|
-| `make install` | Install production dependencies |
-| `make install-dev` | Install all dependencies |
-| `make test` | Run tests |
-| `make test-cov` | Run tests with coverage |
-| `make lint` | Run linting checks |
-| `make format` | Format code |
-| `make clean` | Clean build artifacts |
-| `make docker-build` | Build Docker image |
-| `make bootstrap` | Complete setup from scratch |
 
 ---
 
@@ -115,9 +105,9 @@ docker run --rm http-api-tool test \
   --url https://example.com/api \
   --expected-http-code 200
 
-# Build and test
-make docker-build
-make test-with-httpbin
+# Build image with caching
+DOCKER_BUILDKIT=1 docker build --cache-from http-api-tool:latest \
+  -t http-api-tool .
 ```
 
 ---

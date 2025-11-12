@@ -356,10 +356,10 @@ published PyPI package:
 
 ```bash
 # Run integration tests locally using go-httpbin (recommended - reliable & fast)
-make test-integration-local
+./scripts/test-pypi-integration-local.sh
 
 # Run integration tests against published PyPI package (uses httpbin.org)
-make test-integration
+./scripts/test-pypi-integration.sh
 ```
 
 **Local Testing (Recommended)**: Uses the self-hosted `go-httpbin` service for
@@ -479,24 +479,13 @@ steps:
 For local development and testing:
 
 ```bash
-# Start local go-httpbin service
-make setup-go-httpbin
+# Build Docker image
+docker build -t http-api-tool .
 
-# Test Docker container against local service
-make test-with-httpbin
-
-# Manual testing with local service
-docker run --rm --network host \
-  -v $(PWD)/mkcert-ca.pem:/tmp/mkcert-ca.pem:ro \
-  http-api-tool \
-  test \
-  --url https://localhost:8080/get \
-  --http-method GET \
-  --expected-http-code 200 \
-  --ca-bundle-path /tmp/mkcert-ca.pem
-
-# Stop local service when done
-make stop-go-httpbin
+# Run container
+docker run --rm http-api-tool test \
+  --url https://example.com/api \
+  --expected-http-code 200
 ```
 
 The local go-httpbin service provides all the same endpoints as httpbin.org
@@ -568,6 +557,6 @@ Apache-2.0 License. See [LICENSE](LICENSE) for details.
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests for new functionality
+4. Add tests for new functionality (use `uv run pytest`)
 5. Run pre-commit hooks
 6. Submit a pull request
