@@ -11,18 +11,15 @@ inputs:
   deploy:
     description: 'Deployment method: "uvx" (default, fast) or "docker" (containerized)'
     required: false
-    # type: 'string'
     default: 'uvx'
   python_version:
     description: 'Python version (Note: uvx manages Python automatically; this input is ignored for deploy=uvx)'
     required: false
-    # type: 'string'
     default: '3.11'
   use_local_code:
     # Requires package to first be installed with "uv pip install --system -e ."
     description: "Use locally installed package instead of uvx/PyPI"
     required: false
-    # type: 'boolean'
     default: false
 
   # Mandatory
@@ -223,8 +220,12 @@ runs:
         GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
       run: |
         if [[ "${{ inputs.use_local_code }}" == "true" ]]; then
+          if ! command -v http-api-tool &> /dev/null; then
+            echo "::error::http-api-tool is not installed. Please install it first (e.g., 'uv pip install --system -e .') before using use_local_code: true"
+            exit 1
+          fi
           echo "::notice::Using locally installed http-api-tool package"
-          uv run http-api-tool
+          http-api-tool
         else
           echo "::notice::Using http-api-tool from PyPI via uvx"
           uvx http-api-tool
