@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: 2025 The Linux Foundation
 
 # Runs on a new pull request, performs build and runs tests
-name: 'Python Build/Test/Release'
+name: 'Python/Docker Build/Test/Release'
 
 # yamllint disable-line rule:truthy
 on:
@@ -65,11 +65,11 @@ jobs:
         with:
           egress-policy: 'audit'
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       # Setup Python with enhanced caching
       - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -77,23 +77,12 @@ jobs:
             requirements-docker.txt
             pyproject.toml
 
-      # Cache PDM dependencies for release build
-      - name: Cache PDM release dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cache/pdm
-            .pdm-python
-            .venv
-          key: pdm-release-${{ runner.os }}-python-3.11-${{ hashFiles('pyproject.toml', 'pdm.lock') }}
-          restore-keys: |
-            pdm-release-${{ runner.os }}-python-3.11-
-            pdm-release-${{ runner.os }}-
+      # uv caching is handled by the python-build-action
 
       - name: 'Build Python project'
         id: 'python-build'
         # yamllint disable-line rule:line-length
-        uses: lfreleng-actions/python-build-action@3552106f5c8bfedebe4c38116abf3b9c289359ea # v0.1.22
+        uses: lfreleng-actions/python-build-action@48381cece78a990a6ba93bd5924bcd40bf0d1a7d # v0.1.20
         with:
           sigstore_sign: true
           attestations: true
@@ -115,11 +104,11 @@ jobs:
         with:
           egress-policy: 'audit'
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       # Setup Python with comprehensive caching
       - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -127,19 +116,7 @@ jobs:
             requirements-docker.txt
             pyproject.toml
 
-      # Cache PDM dependencies for release test environment
-      - name: Cache PDM release test dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cache/pdm
-            .pdm-python
-            .venv
-          # yamllint disable-line rule:line-length
-          key: pdm-release-test-${{ runner.os }}-python-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'pdm.lock') }}
-          restore-keys: |
-            pdm-release-test-${{ runner.os }}-python-${{ matrix.python-version }}-
-            pdm-release-test-${{ runner.os }}-
+      # uv caching is handled by the python-test-action
 
       - name: 'Test Python project [PYTEST]'
         # yamllint disable-line rule:line-length
@@ -164,11 +141,11 @@ jobs:
         with:
           egress-policy: 'audit'
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       # Setup Python with comprehensive caching
       - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -176,19 +153,7 @@ jobs:
             requirements-docker.txt
             pyproject.toml
 
-      # Cache PDM dependencies for release audit environment
-      - name: Cache PDM release audit dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cache/pdm
-            .pdm-python
-            .venv
-          # yamllint disable-line rule:line-length
-          key: pdm-release-audit-${{ runner.os }}-python-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'pdm.lock') }}
-          restore-keys: |
-            pdm-release-audit-${{ runner.os }}-python-${{ matrix.python-version }}-
-            pdm-release-audit-${{ runner.os }}-
+      # uv caching is handled by the python-audit-action
 
       - name: 'Audit Python project'
         # yamllint disable-line rule:line-length
@@ -215,11 +180,11 @@ jobs:
         with:
           egress-policy: 'audit'
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       # Setup Python with pip caching for PyPI operations
       - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -250,7 +215,7 @@ jobs:
         with:
           egress-policy: 'audit'
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       # Set up Docker Buildx
       - name: Set up Docker Buildx
@@ -283,10 +248,11 @@ jobs:
 
       # Build and push image with comprehensive caching
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: .
-          file: ./Dockerfile
+          file: ./docker/Containerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -308,6 +274,23 @@ jobs:
           echo "📦 Version: ${{ needs.tag-validate.outputs.tag }}"
           echo "🏷️  Tags: ${{ steps.meta.outputs.tags }}"
 
+      # Save Docker image as artifact (single platform for runner arch)
+      - name: Export Docker image for current platform
+        run: |
+          # Pull the image using its digest (immutable reference to exact image built)
+          IMAGE_DIGEST="${{ steps.build.outputs.digest }}"
+          docker pull --platform linux/amd64 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${IMAGE_DIGEST}
+          docker save ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${IMAGE_DIGEST} | gzip > docker-image-amd64.tar.gz
+          echo "Exported image digest: ${IMAGE_DIGEST}"
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.6.0
+        with:
+          name: docker-image-${{ github.run_id }}
+          path: docker-image-amd64.tar.gz
+          retention-days: 30
+          compression-level: 0
+
   pypi:
     name: 'Release PyPI Package'
     runs-on: 'ubuntu-latest'
@@ -326,11 +309,11 @@ jobs:
         with:
           egress-policy: 'audit'
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       # Setup Python with pip caching for PyPI operations
       - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -368,7 +351,7 @@ jobs:
           egress-policy: 'audit'
 
       # yamllint disable-line rule:line-length
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       - name: 'Promote draft release'
         id: 'promote-release'
@@ -415,20 +398,14 @@ jobs:
         with:
           asset_paths: '["${{ needs.python-build.outputs.artefact_path }}/**"]'
 
-  integration-test:
-    name: 'Integration Test (${{ matrix.deploy }})'
+  integration-test-uvx:
+    name: 'Integration Test (uvx - published package)'
     runs-on: 'ubuntu-latest'
     needs:
       - 'tag-validate'
       - 'pypi'
-      - 'docker-publish'
-    strategy:
-      fail-fast: false
-      matrix:
-        deploy: ['uvx', 'docker']
     permissions:
       contents: read
-      packages: read
     timeout-minutes: 10
     steps:
       # Harden the runner used by this workflow
@@ -437,17 +414,14 @@ jobs:
           egress-policy: 'audit'
 
       - name: 'Install uv'
-        if: matrix.deploy == 'uvx'
-        uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.1.4
+        uses: astral-sh/setup-uv@ed21f2f24f8dd64503750218de024bcf64c7250a # v7.1.5
 
       - name: 'Wait for PyPI package propagation'
-        if: matrix.deploy == 'uvx'
         run: |
           echo "Waiting 60 seconds for PyPI package to propagate..."
           sleep 60
 
-      - name: 'Verify published version matches tag (uvx)'
-        if: matrix.deploy == 'uvx'
+      - name: 'Verify published version matches tag'
         run: |
           TAG_VERSION="${{ needs.tag-validate.outputs.tag }}"
           # Remove 'v' prefix if present
@@ -470,17 +444,8 @@ jobs:
 
           echo "✅ Version verification passed"
 
-      - name: 'Verify Docker image version (docker)'
-        if: matrix.deploy == 'docker'
-        run: |
-          TAG_VERSION="${{ needs.tag-validate.outputs.tag }}"
-          echo "Testing Docker image: ghcr.io/${{ env.IMAGE_NAME }}:${TAG_VERSION}"
-          echo "Expected tag: ${TAG_VERSION}"
-          echo "✅ Docker image tag verification passed"
-
-      # Set up go-httpbin for reliable testing
       # Checkout for using the action
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       - name: 'Setup go-httpbin HTTPS service'
         # yamllint disable-line rule:line-length
@@ -493,7 +458,7 @@ jobs:
       - name: 'Test: Basic GET request'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/get'
           http_method: 'GET'
           expected_http_code: '200'
@@ -503,7 +468,7 @@ jobs:
       - name: 'Test: POST with JSON data'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/post'
           http_method: 'POST'
           request_body: '{"test": "data", "number": 42}'
@@ -514,7 +479,7 @@ jobs:
       - name: 'Test: Response validation with regex'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/json'
           expected_http_code: '200'
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
@@ -524,7 +489,7 @@ jobs:
       - name: 'Test: Custom headers'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/headers'
           request_headers: '{"X-Custom-Header": "test-value"}'
           expected_http_code: '200'
@@ -533,7 +498,7 @@ jobs:
       - name: 'Test: Response time validation'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/delay/1'
           expected_http_code: '200'
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
@@ -543,7 +508,7 @@ jobs:
       - name: 'Test: PUT request'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/put'
           http_method: 'PUT'
           request_body: '{"updated": true}'
@@ -553,7 +518,7 @@ jobs:
       - name: 'Test: DELETE request'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/delete'
           http_method: 'DELETE'
           expected_http_code: '200'
@@ -562,7 +527,7 @@ jobs:
       - name: 'Test: Status codes (404)'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/status/404'
           expected_http_code: '404'
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
@@ -571,7 +536,7 @@ jobs:
       - name: 'Test: Status codes (503)'
         uses: ./
         with:
-          deploy: ${{ matrix.deploy }}
+          deploy: 'uvx'
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/status/503'
           expected_http_code: '503'
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
@@ -580,8 +545,119 @@ jobs:
 
       - name: 'Integration test summary'
         run: |
-          echo "✅ All integration tests passed successfully!"
+          echo "✅ All UVX integration tests passed successfully!"
           echo "📦 Package version: ${{ needs.tag-validate.outputs.tag }}"
-          echo "🚀 Deployment method: ${{ matrix.deploy }}"
-          echo "🎯 Published artifacts verified working"
+          echo "🚀 Deployment method: uvx"
+          echo "🎯 Published PyPI package verified working"
+          echo "🔒 Tested with self-hosted go-httpbin (HTTPS with CA cert)"
+
+  integration-test-docker:
+    name: 'Integration Test (docker - published image)'
+    runs-on: 'ubuntu-latest'
+    needs:
+      - 'tag-validate'
+      - 'docker-publish'
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 10
+    steps:
+      # Harden the runner used by this workflow
+      - uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
+        with:
+          egress-policy: 'audit'
+
+      - name: 'Login to Container Registry'
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        if: github.event_name != 'pull_request'
+
+      - name: 'Pull published Docker image'
+        run: |
+          TAG_VERSION="${{ needs.tag-validate.outputs.tag }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG_VERSION}"
+          echo "Pulling Docker image: ${IMAGE}"
+          docker pull "${IMAGE}"
+          docker tag "${IMAGE}" http-api-tool:test
+          echo "✅ Docker image pulled successfully"
+
+      - name: 'Setup go-httpbin HTTPS service'
+        uses: lfreleng-actions/go-httpbin-action@fd9c3701056fc2e667542ac66b4a63c44faea6c5 # v0.1.0
+        id: go-httpbin
+        with:
+          debug: 'true'
+          port: '8080'
+
+      - name: 'Test: Basic GET request'
+        run: |
+          docker run --rm --network host \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:/tmp/ca-bundle.pem:ro" \
+            http-api-tool:test \
+            test \
+            --url "https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/get" \
+            --ca-bundle-path "/tmp/ca-bundle.pem" \
+            --expected-http-code 200 \
+            --curl-timeout 30 \
+            --debug
+
+      - name: 'Test: POST with JSON data'
+        run: |
+          docker run --rm --network host \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:/tmp/ca-bundle.pem:ro" \
+            http-api-tool:test \
+            test \
+            --url "https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/post" \
+            --http-method POST \
+            --request-body '{"test": "data", "number": 42}' \
+            --content-type "application/json" \
+            --ca-bundle-path "/tmp/ca-bundle.pem" \
+            --expected-http-code 200 \
+            --debug
+
+      - name: 'Test: Response validation with regex'
+        run: |
+          docker run --rm --network host \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:/tmp/ca-bundle.pem:ro" \
+            http-api-tool:test \
+            test \
+            --url "https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/json" \
+            --ca-bundle-path "/tmp/ca-bundle.pem" \
+            --expected-http-code 200 \
+            --regex '"slideshow"' \
+            --curl-timeout 30 \
+            --debug
+
+      - name: 'Test: Custom headers'
+        run: |
+          docker run --rm --network host \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:/tmp/ca-bundle.pem:ro" \
+            http-api-tool:test \
+            test \
+            --url "https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/headers" \
+            --request-headers '{"X-Custom-Header": "test-value"}' \
+            --ca-bundle-path "/tmp/ca-bundle.pem" \
+            --expected-http-code 200 \
+            --debug
+
+      - name: 'Test: Status codes (404)'
+        run: |
+          docker run --rm --network host \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:/tmp/ca-bundle.pem:ro" \
+            http-api-tool:test \
+            test \
+            --url "https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/status/404" \
+            --ca-bundle-path "/tmp/ca-bundle.pem" \
+            --expected-http-code 404 \
+            --retries 1 \
+            --debug
+
+      - name: 'Integration test summary'
+        run: |
+          echo "✅ All Docker integration tests passed successfully!"
+          echo "📦 Package version: ${{ needs.tag-validate.outputs.tag }}"
+          echo "🚀 Deployment method: docker"
+          echo "🎯 Published Docker image verified working"
           echo "🔒 Tested with self-hosted go-httpbin (HTTPS with CA cert)"

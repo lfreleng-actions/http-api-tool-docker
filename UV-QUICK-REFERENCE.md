@@ -74,33 +74,26 @@ uv pip list
 
 ```bash
 # Run all tests
-make test
+uv run pytest tests/ -v
 
 # Run with coverage
-make test-cov
+uv run pytest tests/ --cov=http_api_tool --cov-report=html --cov-report=term
 
-# Run linting
-make lint
+# Run all pre-commit hooks (linting, formatting, etc.)
+uv run pre-commit run --all-files
 
-# Run full CI locally
-make ci
+# Run ruff linter
+uv run ruff check --fix .
+
+# Run ruff formatter
+uv run ruff format .
+
+# Run integration tests locally
+./scripts/test-pypi-integration-local.sh
+
+# Run integration tests against PyPI
+./scripts/test-pypi-integration.sh
 ```
-
----
-
-## Makefile Shortcuts
-
-| Command | Description |
-|---------|-------------|
-| `make install` | Install production dependencies |
-| `make install-dev` | Install all dependencies |
-| `make test` | Run tests |
-| `make test-cov` | Run tests with coverage |
-| `make lint` | Run linting checks |
-| `make format` | Format code |
-| `make clean` | Clean build artifacts |
-| `make docker-build` | Build Docker image |
-| `make bootstrap` | Complete setup from scratch |
 
 ---
 
@@ -108,16 +101,16 @@ make ci
 
 ```bash
 # Build image
-docker build -t http-api-tool .
+docker build -f docker/Containerfile -t http-api-tool .
 
 # Run container
 docker run --rm http-api-tool test \
   --url https://example.com/api \
   --expected-http-code 200
 
-# Build and test
-make docker-build
-make test-with-httpbin
+# Build image with caching
+DOCKER_BUILDKIT=1 docker build -f docker/Containerfile \
+  --cache-from http-api-tool:latest -t http-api-tool .
 ```
 
 ---
@@ -189,7 +182,7 @@ git add uv.lock
 git commit -m "Update uv.lock"
 
 # Rebuild
-docker build -t http-api-tool .
+docker build -f docker/Containerfile -t http-api-tool .
 ```
 
 ---

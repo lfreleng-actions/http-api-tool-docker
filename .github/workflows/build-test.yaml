@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2025 The Linux Foundation
 
-name: 'Build/Test and Publish Docker Image'
+name: 'Python/Docker Build/Test'
 
 on:
   workflow_dispatch:
@@ -35,14 +35,14 @@ env:
 jobs:
   # Purge all caches if requested via workflow_dispatch
   purge-caches:
-    name: "Purge All Caches"
-    if: github.event_name == 'workflow_dispatch' && inputs.purge_all_caches == true
+    name: "Conditional Cache Purge"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       actions: write
     steps:
       - name: Purge all GitHub Actions caches
+        if: github.event_name == 'workflow_dispatch' && inputs.purge_all_caches == true
         run: |
           echo "🗑️ Purging all GitHub Actions caches for this repository..."
 
@@ -61,214 +61,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-  # Build Docker image with comprehensive caching
-  docker-build:
-    needs: [purge-caches]
-    if: always() && (needs.purge-caches.result == 'success' || needs.purge-caches.result == 'skipped')
-    name: "Build Docker Image"
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    outputs:
-      image-tag: ${{ steps.build.outputs.imageid }}
-
-    steps:
-      # Harden the runner
-      - name: Harden Runner
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
-        with:
-          egress-policy: audit
-
-      - name: Checkout repository
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-
-      # Set up Docker Buildx with caching
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-
-      # Build Docker image with registry cache
-      - name: Build Docker image
-        id: build
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: http-api-tool:test
-          build-args: |
-            VERSION=0.0.0.dev0
-          cache-from: |
-            # yamllint disable-line rule:line-length
-            ${{ github.event_name == 'workflow_dispatch' && inputs.bust_cache == true && 'type=gha,scope=docker-build-never-exists' || 'type=gha,scope=docker-build' }}
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-base
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-deps
-          cache-to: type=gha,mode=max,scope=docker-build
-          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.bust_cache == true }}
-          labels: |
-            org.opencontainers.image.title=HTTP API Tool
-            org.opencontainers.image.description=A Python HTTP/HTTPS API testing tool
-            org.opencontainers.image.vendor=The Linux Foundation
-
-      # Test basic image functionality
-      - name: Test Docker image help
-        run: |
-          docker run --rm http-api-tool:test --help
-
-  # Integration tests
-  integration-tests:
-    name: "Integration Tests"
-    runs-on: ubuntu-latest
-    needs: docker-build
-    timeout-minutes: 15
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-
-      # Set up go-httpbin for testing
-      - name: Setup go-httpbin HTTPS service
-        uses: lfreleng-actions/go-httpbin-action@95f83a689f68275007017bf426b1f21e30e28e16 # v0.1.1
-        id: go-httpbin
-        with:
-          debug: 'true'
-          port: '8080'
-
-      # Test 1: Basic GET request
-      - name: Test Basic GET request
-        uses: ./
-        with:
-          url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/get'
-          ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
-          debug: true
-          expected_http_code: 200
-
-      # Test 2: POST request with JSON
-      - name: Test POST request with JSON
-        uses: ./
-        with:
-          url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/post'
-          http_method: 'POST'
-          request_body: '{"test": "data", "number": 42}'
-          content_type: 'application/json'
-          ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
-          debug: true
-          expected_http_code: 200
-
-      # Test 3: Custom headers
-      - name: Test Custom headers
-        uses: ./
-        with:
-          url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/headers'
-          request_headers: '{"X-Test-Header": "test-value", "X-API-Key": "secret123"}'
-          ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
-          debug: true
-          expected_http_code: 200
-
-      # Test 4: Error handling (404)
-      - name: Test Error handling (404)
-        uses: ./
-        with:
-          url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/status/404'
-          ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
-          debug: true
-          expected_http_code: 404
-
-      # Test 5: Error handling (500)
-      - name: Test Error handling (500)
-        uses: ./
-        with:
-          url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/status/500'
-          ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
-          debug: true
-          expected_http_code: 500
-
-      # Clean up is handled automatically by the go-httpbin action
-
-  # Publish to GHCR (only after successful tests)
-  docker-publish:
-    name: "Publish to GHCR"
-    runs-on: ubuntu-latest
-    needs: [docker-build, integration-tests]
-    if: github.event_name != 'pull_request'
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      # Harden the runner
-      - name: Harden Runner
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
-        with:
-          egress-policy: audit
-
-      - name: Checkout repository
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-
-      # Set up Docker Buildx
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-
-      # Login to GitHub Container Registry
-      - name: Login to Container Registry
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Extract metadata for tags and labels
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@318604b99e75e41977312d83839a89be02ca4893 # v5.9.0
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
-          labels: |
-            org.opencontainers.image.title=HTTP API Tool
-            org.opencontainers.image.description=A Python HTTP/HTTPS API testing tool for GitHub Actions and CLI usage
-            org.opencontainers.image.vendor=The Linux Foundation
-
-      # Build and push image with comprehensive caching
-      - name: Build and push Docker image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=0.0.0.dev0
-          cache-from: |
-            # yamllint disable-line rule:line-length
-            ${{ github.event_name == 'workflow_dispatch' && inputs.bust_cache == true && 'type=gha,scope=docker-publish-never-exists' || 'type=gha,scope=docker-publish' }}
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-base
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-deps
-          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.bust_cache == true }}
-          cache-to: |
-            type=gha,mode=max,scope=docker-publish
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-base,mode=max
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-deps,mode=max
-
-      - name: Verify published image
-        run: |
-          echo "Image published successfully to GHCR"
-          echo "Tags: ${{ steps.meta.outputs.tags }}"
-
-  # Python build for additional testing (runs in parallel with container pipeline)
   python-build:
     name: 'Python Build'
     runs-on: 'ubuntu-latest'
+    needs: [purge-caches]
     outputs:
       matrix_json: "${{ steps.python-build.outputs.matrix_json }}"
       artefact_name: "${{ steps.python-build.outputs.artefact_name }}"
@@ -284,11 +80,11 @@ jobs:
         with:
           egress-policy: 'audit'
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       # Setup Python with enhanced caching
       - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -296,29 +92,123 @@ jobs:
             requirements-docker.txt
             pyproject.toml
 
-      # Cache PDM dependencies
-      - name: Cache PDM dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cache/pdm
-            .pdm-python
-            .venv
-          key: pdm-${{ runner.os }}-python-3.11-${{ hashFiles('pyproject.toml', 'pdm.lock') }}
-          restore-keys: |
-            pdm-${{ runner.os }}-python-3.11-
-            pdm-${{ runner.os }}-
-
+      # uv caching is handled by the python-build-action
       - name: 'Build Python project'
         id: python-build
         # yamllint disable-line rule:line-length
-        uses: lfreleng-actions/python-build-action@3552106f5c8bfedebe4c38116abf3b9c289359ea # v0.1.22
+        uses: lfreleng-actions/python-build-action@48381cece78a990a6ba93bd5924bcd40bf0d1a7d # v0.1.20
 
-  # Python tests with matrix strategy (after container pipeline)
+  # Build Docker image and save as workflow artifact (no registry push)
+  docker-build:
+    needs: [purge-caches]
+    name: "Docker Container Build"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-id: ${{ steps.build.outputs.imageid }}
+
+    steps:
+      # Harden the runner
+      - name: Harden Runner
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # Set up Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      # Extract metadata for tags and labels (used for local image tagging only)
+      - name: Extract metadata for local tagging
+        id: meta
+        uses: docker/metadata-action@318604b99e75e41977312d83839a89be02ca4893 # v5.9.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha
+          labels: |
+            org.opencontainers.image.title=HTTP API Tool
+            org.opencontainers.image.description=A Python HTTP/HTTPS API testing tool for GitHub Actions and CLI usage
+            org.opencontainers.image.vendor=The Linux Foundation
+
+      # Extract dynamic version from hatchling-vcs
+      - name: Extract version from hatchling-vcs
+        id: version
+        run: |
+          # Install hatchling and hatch-vcs to query version directly
+          # Versions pinned for reproducibility and match pyproject.toml requirements
+          pip install hatchling==1.27.0 hatch-vcs==0.4.0
+
+          # Use hatchling's built-in version command (more robust than parsing build output)
+          VERSION=$(python -m hatchling version)
+
+          # Validate that version was extracted
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::Failed to extract version from hatchling"
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Detected version: ${VERSION}"
+
+      # Build Docker image locally (no push to registry)
+      - name: Build Docker image
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: ./docker/Containerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          cache-from: |
+            ${{ github.event_name == 'workflow_dispatch' && inputs.bust_cache == true && 'type=gha,scope=docker-build-never-exists' || 'type=gha,scope=docker-build' }}
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.bust_cache == true }}
+          cache-to: type=gha,mode=max,scope=docker-build
+
+      # Verify built image
+      - name: Verify built image
+        run: |
+          echo "Image built successfully"
+          echo "Tags: ${{ steps.meta.outputs.tags }}"
+          echo "Image ID: ${{ steps.build.outputs.imageid }}"
+          docker images | grep "${{ env.IMAGE_NAME }}"
+
+      # Export Docker image as compressed artifact
+      - name: Export Docker image as artifact
+        run: |
+          # Save the built image to a tarball using the image ID (more reliable than tags)
+          docker save ${{ steps.build.outputs.imageid }} | gzip > docker-image-amd64.tar.gz
+          echo "Exported image size: $(du -h docker-image-amd64.tar.gz | cut -f1)"
+
+      # Upload as workflow artifact for use by other jobs
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.6.0
+        with:
+          name: docker-image-${{ github.run_id }}
+          path: docker-image-amd64.tar.gz
+          retention-days: 7
+          compression-level: 0
+
+  # Python pytests with matrix strategy
   python-tests:
     name: 'Python Tests'
     runs-on: 'ubuntu-latest'
-    needs: [integration-tests, python-build]
+    needs: [python-build]
     # Matrix job
     strategy:
       fail-fast: false
@@ -332,11 +222,11 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       # Setup Python with comprehensive caching
       - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -344,19 +234,7 @@ jobs:
             requirements-docker.txt
             pyproject.toml
 
-      # Cache PDM dependencies for test environment
-      - name: Cache PDM test dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cache/pdm
-            .pdm-python
-            .venv
-          # yamllint disable-line rule:line-length
-          key: pdm-test-${{ runner.os }}-python-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'pdm.lock') }}
-          restore-keys: |
-            pdm-test-${{ runner.os }}-python-${{ matrix.python-version }}-
-            pdm-test-${{ runner.os }}-
+      # uv caching is handled by the python-test-action
 
       - name: "Python tests [pytest] ${{ matrix.python-version }}"
         # yamllint disable-line rule:line-length
@@ -368,7 +246,7 @@ jobs:
   python-audit:
     name: 'Python Audit'
     runs-on: 'ubuntu-latest'
-    needs: [integration-tests, python-build]
+    needs: [python-build]
     # Matrix job
     strategy:
       fail-fast: false
@@ -382,11 +260,11 @@ jobs:
         with:
           egress-policy: 'audit'
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       # Setup Python with comprehensive caching
       - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -394,19 +272,7 @@ jobs:
             requirements-docker.txt
             pyproject.toml
 
-      # Cache PDM dependencies for audit environment
-      - name: Cache PDM audit dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cache/pdm
-            .pdm-python
-            .venv
-          # yamllint disable-line rule:line-length
-          key: pdm-audit-${{ runner.os }}-python-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'pdm.lock') }}
-          restore-keys: |
-            pdm-audit-${{ runner.os }}-python-${{ matrix.python-version }}-
-            pdm-audit-${{ runner.os }}-
+      # uv caching is handled by the python-audit-action
 
       - name: "Audit dependencies ${{ matrix.python-version }}"
         # yamllint disable-line rule:line-length
@@ -414,75 +280,11 @@ jobs:
         with:
           python_version: "${{ matrix.python-version }}"
 
-  # Makefile tests (after container pipeline)
-  makefile-tests:
-    name: 'Makefile Tests'
-    runs-on: ubuntu-latest
-    needs: [integration-tests, python-build]
-    permissions:
-      contents: read
-    timeout-minutes: 10
-    steps:
-      # Harden the runner used by this workflow
-      - uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
-        with:
-          egress-policy: 'audit'
-
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-
-      # Setup Python with comprehensive caching
-      - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: |
-            requirements-docker.txt
-            pyproject.toml
-
-      # Cache PDM dependencies for makefile tests
-      - name: Cache PDM makefile dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cache/pdm
-            .pdm-python
-            .venv
-          key: pdm-makefile-${{ runner.os }}-python-3.11-${{ hashFiles('pyproject.toml', 'pdm.lock') }}
-          restore-keys: |
-            pdm-makefile-${{ runner.os }}-python-3.11-
-            pdm-makefile-${{ runner.os }}-
-
-      - name: Install PDM
-        run: |
-          # Generate PDM requirements with complete dependency tree and hashes
-          python3 scripts/generate_requirements.py \
-            --platform linux_x86_64 \
-            --python-version 311 \
-            --output /tmp/pdm-requirements.txt \
-            --comment "PDM with complete dependency tree" \
-            pdm==2.24.2
-          pip install --require-hashes -r /tmp/pdm-requirements.txt
-
-      - name: Test Makefile targets
-        run: |
-          # Test basic make targets
-          make install-test
-          make test
-
-          # Test help target
-          make help
-
-      - name: Test make docker-build
-        run: |
-          # Test Docker build via Makefile
-          make docker-build
-
-  # CLI integration tests (after container pipeline)
+  # CLI integration tests
   cli-tests:
     name: 'CLI Integration Tests'
     runs-on: ubuntu-latest
-    needs: [integration-tests, python-build]
+    needs: [python-build]
     permissions:
       contents: read
     timeout-minutes: 15
@@ -492,55 +294,31 @@ jobs:
         with:
           egress-policy: 'audit'
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
-      # Setup Python with comprehensive caching
-      - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+      # Install uv for package management
+      - name: Install uv
+        uses: astral-sh/setup-uv@ed21f2f24f8dd64503750218de024bcf64c7250a # v7.1.5
         with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: |
-            requirements-docker.txt
-            pyproject.toml
+          enable-cache: true
 
-      # Cache PDM dependencies for CLI tests
-      - name: Cache PDM CLI dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cache/pdm
-            .pdm-python
-            .venv
-          key: pdm-cli-${{ runner.os }}-python-3.11-${{ hashFiles('pyproject.toml', 'pdm.lock') }}
-          restore-keys: |
-            pdm-cli-${{ runner.os }}-python-3.11-
-            pdm-cli-${{ runner.os }}-
-
-      - name: Install PDM and dependencies
+      - name: Install package with uv
         run: |
-          # Generate PDM requirements with complete dependency tree and hashes
-          python3 scripts/generate_requirements.py \
-            --platform linux_x86_64 \
-            --python-version 311 \
-            --output /tmp/pdm-requirements.txt \
-            --comment "PDM with complete dependency tree" \
-            pdm==2.24.2
-          pip install --require-hashes -r /tmp/pdm-requirements.txt
-          pdm install -G test
+          # Install the package in editable mode with test dependencies
+          uv pip install --system -e ".[test]"
 
       - name: Test CLI help and version
         run: |
           # Test CLI help
-          pdm run python -m http_api_tool --help
+          http-api-tool --help
 
           # Test specific command help
-          pdm run python -m http_api_tool test --help
+          http-api-tool test --help
 
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
         id: go-httpbin
-        uses: lfreleng-actions/go-httpbin-action@95f83a689f68275007017bf426b1f21e30e28e16 # v0.1.1
+        uses: lfreleng-actions/go-httpbin-action@fd9c3701056fc2e667542ac66b4a63c44faea6c5 # v0.1.0
         with:
           port: '8080'
           debug: 'true'
@@ -555,7 +333,7 @@ jobs:
           echo "Using CA bundle: $CA_BUNDLE"
 
           # Test basic GET request
-          pdm run python -m http_api_tool test \
+          http-api-tool test \
             --url "$SERVICE_URL/get" \
             --http-method GET \
             --expected-http-code 200 \
@@ -564,7 +342,7 @@ jobs:
             --retries 3
 
           # Test POST request with JSON
-          pdm run python -m http_api_tool test \
+          http-api-tool test \
             --url "$SERVICE_URL/post" \
             --http-method POST \
             --expected-http-code 200 \
@@ -574,7 +352,7 @@ jobs:
             --debug
 
           # Test with headers
-          pdm run python -m http_api_tool test \
+          http-api-tool test \
             --url "$SERVICE_URL/headers" \
             --http-method GET \
             --expected-http-code 200 \
@@ -583,7 +361,7 @@ jobs:
             --debug
 
           # Test with authentication (if supported)
-          pdm run python -m http_api_tool test \
+          http-api-tool test \
             --url "$SERVICE_URL/basic-auth/user/pass" \
             --http-method GET \
             --expected-http-code 401 \
@@ -593,7 +371,7 @@ jobs:
       - name: Test CLI error handling
         run: |
           # Test with invalid URL (should fail gracefully)
-          pdm run python -m http_api_tool test \
+          http-api-tool test \
             --url "https://localhost:9999/nonexistent" \
             --http-method GET \
             --expected-http-code 200 \
@@ -605,11 +383,11 @@ jobs:
         run: |
           docker rm -f go-httpbin || true
 
-  # GitHub Action functionality tests (after container pipeline)
+  # GitHub Action functionality tests (uvx and Docker modes)
   action-tests:
     name: 'GitHub Action Tests'
     runs-on: ubuntu-latest
-    needs: [integration-tests]
+    needs: [python-build]
     permissions:
       contents: read
     timeout-minutes: 10
@@ -619,31 +397,99 @@ jobs:
         with:
           egress-policy: 'audit'
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      # Install uv for local package installation
+      - name: Install uv
+        uses: astral-sh/setup-uv@ed21f2f24f8dd64503750218de024bcf64c7250a # v7.1.5
+        with:
+          enable-cache: false
+
+      # Install local PR code into system Python
+      - name: Install local package for testing
+        run: uv pip install --system -e .
+
+      # Download and load Docker image artifact for Docker deployment tests
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: docker-image-${{ github.run_id }}
+          path: /tmp
+
+      - name: Load Docker image from artifact
+        run: |
+          # Load the image from the artifact
+          gunzip -c /tmp/docker-image-amd64.tar.gz | docker load
+
+          # Get the loaded image name and tag it for local use
+          # Use case-insensitive grep since Docker lowercases image names but github.repository may contain uppercase
+          LOADED_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep -i "ghcr.io/${{ github.repository }}" | head -n 1)
+
+          # Validate that we found the image
+          if [[ -z "$LOADED_IMAGE" ]]; then
+            echo "::error::Failed to find loaded Docker image matching ghcr.io/${{ github.repository }}"
+            docker images
+            exit 1
+          fi
+
+          echo "Loaded image: $LOADED_IMAGE"
+
+          # Tag it with the expected local tag for action.yaml
+          docker tag "$LOADED_IMAGE" "http-api-tool:${{ github.run_id }}"
+          echo "✅ Docker image loaded and tagged as http-api-tool:${{ github.run_id }}"
 
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
         id: go-httpbin
-        uses: lfreleng-actions/go-httpbin-action@95f83a689f68275007017bf426b1f21e30e28e16 # v0.1.1
+        uses: lfreleng-actions/go-httpbin-action@fd9c3701056fc2e667542ac66b4a63c44faea6c5 # v0.1.0
         with:
           port: '8080'
           debug: 'true'
 
-      - name: Test GitHub Action (local)
+      # Test uvx mode with local code
+      - name: Test GitHub Action (uvx mode with local code)
         uses: ./
         with:
+          deploy: 'uvx'
+          use_local_code: true
           url: '${{ steps.go-httpbin.outputs.service-url }}/get'
-          service_name: 'HTTPBin Test Service'
+          service_name: 'HTTPBin Test Service (uvx)'
           expected_http_code: 200
           retries: 3
           initial_sleep_time: 1
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
 
-      - name: Test GitHub Action with POST
+      - name: Test GitHub Action with POST (uvx mode)
         uses: ./
         with:
+          deploy: 'uvx'
+          use_local_code: true
           url: '${{ steps.go-httpbin.outputs.service-url }}/post'
-          service_name: 'HTTPBin POST Test'
+          service_name: 'HTTPBin POST Test (uvx)'
+          http_method: 'POST'
+          expected_http_code: 200
+          request_body: '{"test": "data"}'
+          content_type: 'application/json'
+          ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
+
+      # Test Docker mode with pre-loaded image
+      - name: Test GitHub Action (Docker mode)
+        uses: ./
+        with:
+          deploy: 'docker'
+          url: '${{ steps.go-httpbin.outputs.service-url }}/get'
+          service_name: 'HTTPBin Test Service (Docker)'
+          expected_http_code: 200
+          retries: 3
+          initial_sleep_time: 1
+          ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
+
+      - name: Test GitHub Action with POST (Docker mode)
+        uses: ./
+        with:
+          deploy: 'docker'
+          url: '${{ steps.go-httpbin.outputs.service-url }}/post'
+          service_name: 'HTTPBin POST Test (Docker)'
           http_method: 'POST'
           expected_http_code: 200
           request_body: '{"test": "data"}'
@@ -668,22 +514,61 @@ jobs:
   deployment-mode-tests:
     name: 'Deployment Mode Tests (uvx vs docker)'
     runs-on: ubuntu-latest
-    needs: [integration-tests]
+    needs: [python-build]
     permissions:
       contents: read
     timeout-minutes: 10
     steps:
       # Harden the runner used by this workflow
-      - uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
+      - uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
         with:
           egress-policy: 'audit'
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      # Install uv for local package installation
+      - name: Install uv
+        uses: astral-sh/setup-uv@ed21f2f24f8dd64503750218de024bcf64c7250a # v7.1.5
+        with:
+          enable-cache: false
+
+      # Install local PR code into system Python
+      - name: Install local package for testing
+        run: uv pip install --system -e .
+
+      # Download and load Docker image artifact for docker deployment tests
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: docker-image-${{ github.run_id }}
+          path: /tmp
+
+      - name: Load Docker image from artifact
+        run: |
+          # Load the image from the artifact
+          gunzip -c /tmp/docker-image-amd64.tar.gz | docker load
+
+          # Get the loaded image name and tag it for local use
+          # Use case-insensitive grep since Docker lowercases image names but github.repository may contain uppercase
+          LOADED_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep -i "ghcr.io/${{ github.repository }}" | head -n 1)
+
+          # Validate that we found the image
+          if [[ -z "$LOADED_IMAGE" ]]; then
+            echo "::error::Failed to find loaded Docker image matching ghcr.io/${{ github.repository }}"
+            docker images
+            exit 1
+          fi
+
+          echo "Loaded image: $LOADED_IMAGE"
+
+          # Tag it with the expected local tag for action.yaml
+          docker tag "$LOADED_IMAGE" "http-api-tool:${{ github.run_id }}"
+          echo "✅ Docker image loaded and tagged as http-api-tool:${{ github.run_id }}"
 
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
         id: go-httpbin
-        uses: lfreleng-actions/go-httpbin-action@95f83a689f68275007017bf426b1f21e30e28e16 # v0.1.1
+        uses: lfreleng-actions/go-httpbin-action@fd9c3701056fc2e667542ac66b4a63c44faea6c5 # v0.1.0
         with:
           port: '8080'
           debug: 'true'
@@ -703,6 +588,7 @@ jobs:
         uses: ./
         with:
           deploy: 'uvx'
+          use_local_code: true
           url: '${{ steps.go-httpbin.outputs.service-url }}/get'
           service_name: 'UVX Deployment Test'
           expected_http_code: 200
@@ -747,6 +633,7 @@ jobs:
         uses: ./
         with:
           deploy: 'uvx'
+          use_local_code: true
           url: '${{ steps.derive-ip-url.outputs.ip-url }}/get'
           service_name: 'UVX 127.0.0.1 Test'
           expected_http_code: 200
@@ -759,6 +646,7 @@ jobs:
         uses: ./
         with:
           deploy: 'uvx'
+          use_local_code: true
           url: '${{ steps.go-httpbin.outputs.service-url }}/post'
           service_name: 'UVX POST Test'
           http_method: 'POST'
@@ -782,83 +670,13 @@ jobs:
         run: |
           docker rm -f go-httpbin || true
 
-  # Docker integration test for PRs (using GitHub Action instead of Docker CLI)
-  docker-integration-test-pr:
-    name: 'Docker Integration Test (PR)'
-    runs-on: ubuntu-latest
-    needs: [integration-tests, python-tests, python-audit, makefile-tests, cli-tests, action-tests]
-    if: github.event_name == 'pull_request'
-    permissions:
-      contents: read
-    timeout-minutes: 15
-
-    steps:
-      # Harden the runner used by this workflow
-      - name: Harden Runner
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-
-      # Start go-httpbin service for testing
-      - name: Setup go-httpbin service
-        id: go-httpbin
-        uses: lfreleng-actions/go-httpbin-action@95f83a689f68275007017bf426b1f21e30e28e16 # v0.1.1
-        with:
-          port: '8080'
-          debug: 'true'
-
-      # Test Docker integration via GitHub Action (no Docker CLI dependency)
-      - name: Test Docker integration via GitHub Action
-        uses: ./
-        with:
-          url: '${{ steps.go-httpbin.outputs.service-url }}/get'
-          service_name: 'Docker Integration Test (PR)'
-          expected_http_code: 200
-          retries: 3
-          ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
-          debug: true
-
-      # Test additional Docker integration scenarios via GitHub Action
-      - name: Test Docker integration with POST
-        uses: ./
-        with:
-          url: '${{ steps.go-httpbin.outputs.service-url }}/post'
-          service_name: 'Docker Integration POST Test (PR)'
-          http_method: 'POST'
-          expected_http_code: 200
-          request_body: '{"integration": "test", "pr": true}'
-          content_type: 'application/json'
-          ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
-          debug: true
-
-      # Test Docker integration with custom headers
-      - name: Test Docker integration with headers
-        uses: ./
-        with:
-          url: '${{ steps.go-httpbin.outputs.service-url }}/headers'
-          service_name: 'Docker Integration Headers Test (PR)'
-          request_headers: '{"X-Integration-Test": "docker-pr", "X-Test-Type": "headers"}'
-          expected_http_code: 200
-          ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
-          debug: true
-
-      # Clean up test containers
-      - name: Clean up test containers
-        if: always()
-        run: |
-          docker rm -f go-httpbin || true
-
-  # Comprehensive Docker integration tests (after container pipeline and all other tests)
+  # Docker integration test for PRs (tests Docker deployment mode with artifact)
   docker-integration-test:
     name: 'Docker Integration Test'
     runs-on: ubuntu-latest
-    needs: [docker-publish, python-tests, python-audit, makefile-tests, cli-tests, action-tests]
-    if: github.event_name != 'pull_request'
+    needs: [docker-build]
     permissions:
       contents: read
-      packages: read
     timeout-minutes: 15
 
     steps:
@@ -868,56 +686,99 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
-      # Set up Docker Buildx
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-
-      # Login to Container Registry
-      - name: Login to Container Registry
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+      # Download and load Docker image artifact
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          name: docker-image-${{ github.run_id }}
+          path: /tmp
 
-      # Test Docker image functionality
-      - name: Test Docker image functionality
+      - name: Load Docker image from artifact
         run: |
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          echo "Testing published image: $IMAGE_TAG"
+          # Load the image from the artifact
+          gunzip -c /tmp/docker-image-amd64.tar.gz | docker load
 
-          # Test basic help command
-          docker run --rm "$IMAGE_TAG" --help
+          # Get the loaded image name and tag it for local use
+          # Use case-insensitive grep since Docker lowercases image names but github.repository may contain uppercase
+          LOADED_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep -i "ghcr.io/${{ github.repository }}" | head -n 1)
+
+          # Validate that we found the image
+          if [[ -z "$LOADED_IMAGE" ]]; then
+            echo "::error::Failed to find loaded Docker image matching ghcr.io/${{ github.repository }}"
+            docker images
+            exit 1
+          fi
+
+          echo "Loaded image: $LOADED_IMAGE"
+
+          # Tag it with the expected local tag for action.yaml
+          docker tag "$LOADED_IMAGE" "http-api-tool:${{ github.run_id }}"
+          echo "✅ Docker image loaded and tagged as http-api-tool:${{ github.run_id }}"
 
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
         id: go-httpbin
-        uses: lfreleng-actions/go-httpbin-action@95f83a689f68275007017bf426b1f21e30e28e16 # v0.1.1
+        uses: lfreleng-actions/go-httpbin-action@fd9c3701056fc2e667542ac66b4a63c44faea6c5 # v0.1.0
         with:
           port: '8080'
           debug: 'true'
 
-      - name: Test Docker image with go-httpbin
+      # Test Docker deployment mode by running container directly
+      - name: Test Docker integration via container
         run: |
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          echo "Using image tag: $IMAGE_TAG"
+          docker run --rm \
+            --network host \
+            -v "$GITHUB_OUTPUT:$GITHUB_OUTPUT" \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:${{ steps.go-httpbin.outputs.ca-cert-path }}:ro" \
+            -e INPUT_URL='${{ steps.go-httpbin.outputs.service-url }}/get' \
+            -e INPUT_SERVICE_NAME='Docker Integration Test (PR)' \
+            -e INPUT_EXPECTED_HTTP_CODE='200' \
+            -e INPUT_RETRIES='3' \
+            -e INPUT_CA_BUNDLE_PATH='${{ steps.go-httpbin.outputs.ca-cert-path }}' \
+            -e INPUT_DEBUG='true' \
+            -e GITHUB_ACTIONS='true' \
+            -e GITHUB_OUTPUT \
+            http-api-tool:${{ github.run_id }}
 
-          # Get service URL and CA bundle from go-httpbin action
-          SERVICE_URL="${{ steps.go-httpbin.outputs.service-url }}"
-          CA_BUNDLE="${{ steps.go-httpbin.outputs.ca-cert-path }}"
+      # Test Docker deployment mode with POST by running container directly
+      - name: Test Docker integration with POST
+        run: |
+          docker run --rm \
+            --network host \
+            -v "$GITHUB_OUTPUT:$GITHUB_OUTPUT" \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:${{ steps.go-httpbin.outputs.ca-cert-path }}:ro" \
+            -e INPUT_URL='${{ steps.go-httpbin.outputs.service-url }}/post' \
+            -e INPUT_SERVICE_NAME='Docker Integration POST Test (PR)' \
+            -e INPUT_HTTP_METHOD='POST' \
+            -e INPUT_EXPECTED_HTTP_CODE='200' \
+            -e INPUT_REQUEST_BODY='{"integration": "test", "pr": true}' \
+            -e INPUT_CONTENT_TYPE='application/json' \
+            -e INPUT_CA_BUNDLE_PATH='${{ steps.go-httpbin.outputs.ca-cert-path }}' \
+            -e INPUT_DEBUG='true' \
+            -e GITHUB_ACTIONS='true' \
+            -e GITHUB_OUTPUT \
+            http-api-tool:${{ github.run_id }}
 
-          # Test the http-api-tool against go-httpbin with HTTPS
-          docker run --rm --network host \
-            -v "$GITHUB_WORKSPACE/$CA_BUNDLE:/tmp/ca-bundle.pem:ro" \
-            "$IMAGE_TAG" \
-            test \
-            --url "$SERVICE_URL/get" \
-            --ca-bundle-path "/tmp/ca-bundle.pem" \
-            --debug \
-            --retries 3
+      # Test Docker deployment mode with custom headers by running container directly
+      - name: Test Docker integration with headers
+        run: |
+          docker run --rm \
+            --network host \
+            -v "$GITHUB_OUTPUT:$GITHUB_OUTPUT" \
+            -v "${{ steps.go-httpbin.outputs.ca-cert-path }}:${{ steps.go-httpbin.outputs.ca-cert-path }}:ro" \
+            -e INPUT_URL='${{ steps.go-httpbin.outputs.service-url }}/headers' \
+            -e INPUT_SERVICE_NAME='Docker Integration Headers Test (PR)' \
+            -e INPUT_REQUEST_HEADERS='{"X-Integration-Test": "docker-pr", "X-Test-Type": "headers"}' \
+            -e INPUT_EXPECTED_HTTP_CODE='200' \
+            -e INPUT_CA_BUNDLE_PATH='${{ steps.go-httpbin.outputs.ca-cert-path }}' \
+            -e INPUT_DEBUG='true' \
+            -e GITHUB_ACTIONS='true' \
+            -e GITHUB_OUTPUT \
+            http-api-tool:${{ github.run_id }}
 
+      # Clean up test containers
       - name: Clean up test containers
         if: always()
         run: |
@@ -939,11 +800,11 @@ jobs:
           egress-policy: audit
 
       - name: Checkout repository
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       # Setup Python with caching
       - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: '3.10'
           cache: 'pip'
@@ -951,71 +812,34 @@ jobs:
             requirements-docker.txt
             pyproject.toml
 
-      # Cache PDM dependencies
-      - name: Cache PDM dependencies
+      # Cache uv and pip dependencies
+      - name: Cache dependencies
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
-            ./.venv
+            ~/.cache/uv
             ~/.cache/pip
-            ~/.cache/pdm
-          key: ${{ runner.os }}-security-scan-deps-${{ hashFiles('**/pyproject.toml') }}
+          key: ${{ runner.os }}-security-scan-deps-${{ hashFiles('**/pyproject.toml', '**/uv.lock') }}
           restore-keys: |
             ${{ runner.os }}-security-scan-deps-
             ${{ runner.os }}-security-scan-
 
-      # Install security tools
-      - name: Install security scanning tools
-        run: |
-          # Ensure we have a recent version of pip that supports --hash properly
-          VERSION=$(pip --version)
-          echo "Using pip version: $VERSION"
+      # Install uv for running security tools in isolated environments
+      - name: Install uv
+        uses: astral-sh/setup-uv@ed21f2f24f8dd64503750218de024bcf64c7250a # v7.1.5
+        with:
+          enable-cache: false
 
-          # Generate requirements file with complete dependency tree and hashes
-          echo "Generating security tools requirements with all transitive dependencies..."
-          python3 scripts/generate_requirements.py \
-            --platform linux_x86_64 \
-            --python-version 310 \
-            --output /tmp/security-requirements.txt \
-            --comment "Security scanning tools with complete dependency tree" \
-            safety==3.6.0 \
-            bandit==1.8.3 \
-            pip-audit==2.7.3
+      # Note: Dependency vulnerability scanning is handled by python-audit-action job
+      # which runs pip-audit across all Python versions in the matrix
 
-          # Install security tools with hash verification using requirements file
-          echo "Installing security tools with hash verification..."
-          pip install --require-hashes -r /tmp/security-requirements.txt
-
-      # Check pip install security (SHA pinning)
-      - name: Check pip install commands for SHA hash pinning
-        run: |
-          echo "::group::Pip Install Security Check"
-          python3 scripts/check-pip-security.py
-          echo "::endgroup::"
-
-      # Run safety check
-      - name: Run safety check
-        run: |
-          echo "::group::Safety Dependency Check"
-          safety check --full-report
-          echo "::endgroup::"
-        continue-on-error: true
-
-      # Run bandit
+      # Run bandit using uvx (isolated environment)
       - name: Run bandit static code analysis
         run: |
           echo "::group::Bandit Static Analysis"
-          bandit -r src/ -c pyproject.toml -ll
+          uvx --with bandit[toml]==1.8.3 bandit -r src/ -c pyproject.toml -ll
           echo "::endgroup::"
 
-      # Run pip-audit
-      - name: Run pip-audit for vulnerabilities
-        run: |
-          echo "::group::Pip Audit"
-          pip-audit -r requirements-docker.txt || true
-          pip-audit -f json -r requirements-docker.txt > security-report.json || true
-          echo "::endgroup::"
-        continue-on-error: true
 
       # Check for specific vulnerabilities
       - name: Check for known vulnerabilities

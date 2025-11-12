@@ -16,6 +16,11 @@ inputs:
     description: 'Python version (Note: uvx manages Python automatically; this input is ignored for deploy=uvx)'
     required: false
     default: '3.11'
+  use_local_code:
+    # Requires package to first be installed with "uv pip install --system -e ."
+    description: "Use locally installed package instead of uvx/PyPI"
+    required: false
+    default: false
 
   # Mandatory
   url:
@@ -192,7 +197,17 @@ runs:
         GITHUB_OUTPUT: ${{ env.GITHUB_OUTPUT }}
         GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
       run: |
-        uvx http-api-tool
+        if [[ "${{ inputs.use_local_code }}" == "true" ]]; then
+          if ! command -v http-api-tool &> /dev/null; then
+            echo "::error::http-api-tool is not installed. Please install it first (e.g., 'uv pip install --system -e .') before using use_local_code: true"
+            exit 1
+          fi
+          echo "::notice::Using locally installed http-api-tool package"
+          http-api-tool
+        else
+          echo "::notice::Using http-api-tool from PyPI via uvx"
+          uvx http-api-tool
+        fi
 
     # Docker deployment path
     - name: Build Docker image for docker deployment
@@ -200,7 +215,13 @@ runs:
       shell: bash
       working-directory: ${{ github.action_path }}
       run: |
-        docker build -t http-api-tool:${{ github.run_id }} .
+        # Check if the image already exists (pre-loaded from artifact)
+        if docker image inspect http-api-tool:${{ github.run_id }} >/dev/null 2>&1; then
+          echo "::notice::Using pre-loaded Docker image http-api-tool:${{ github.run_id }}"
+        else
+          echo "::notice::Building Docker image http-api-tool:${{ github.run_id }}"
+          docker build -f docker/Containerfile -t http-api-tool:${{ github.run_id }} .
+        fi
 
     - name: Run http-api-tool via Docker
       if: inputs.deploy == 'docker'

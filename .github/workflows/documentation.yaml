@@ -22,7 +22,7 @@ on:
       - "**"
       - "!.github/**"
       - "!.*"
-      - "!pdm.lock"
+      - "!uv.lock"
       - "!tox.ini"
 
 permissions: {}

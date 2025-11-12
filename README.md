@@ -49,7 +49,7 @@ docker run --rm ghcr.io/lfreleng-actions/http-api-tool-docker:latest test \
 
 ### Docker Security Features
 
-The Dockerfile implements these security best practices:
+The Containerfile implements these security best practices:
 
 - **Version Pinning**: uv binary version is explicitly pinned (0.8.4)
 - **Checksum Validation**: Downloads verify against SHA256 checksums to
@@ -65,14 +65,15 @@ You can build the container locally if needed, though pre-built images are avail
 
 ```bash
 # Build for current platform
-docker build -t http-api-tool .
+docker build -f docker/Containerfile -t http-api-tool .
 
 # Build for specific platform
-docker build --platform linux/amd64 -t http-api-tool .
-docker build --platform linux/arm64 -t http-api-tool .
+docker build -f docker/Containerfile --platform linux/amd64 -t http-api-tool .
+docker build -f docker/Containerfile --platform linux/arm64 -t http-api-tool .
 
 # Override uv version
-docker build --build-arg UV_VERSION=0.8.5 -t http-api-tool .
+docker build -f docker/Containerfile --build-arg UV_VERSION=0.8.5 \
+  -t http-api-tool .
 ```
 
 ### Container Usage
@@ -356,10 +357,10 @@ published PyPI package:
 
 ```bash
 # Run integration tests locally using go-httpbin (recommended - reliable & fast)
-make test-integration-local
+./scripts/test-pypi-integration-local.sh
 
 # Run integration tests against published PyPI package (uses httpbin.org)
-make test-integration
+./scripts/test-pypi-integration.sh
 ```
 
 **Local Testing (Recommended)**: Uses the self-hosted `go-httpbin` service for
@@ -410,11 +411,11 @@ If you need to manually regenerate for local development:
 ```bash
 # Regenerate requirements-docker.txt with all dependencies and hashes
 # Note: This project now uses UV for dependency management
-# The Dockerfile uses UV directly, so requirements-docker.txt is no longer needed
+# The Containerfile uses UV directly, so requirements-docker.txt is no longer needed
 # UV lock file (uv.lock) is automatically generated and used during builds
 
 # Test the Docker build
-docker build . --platform linux/arm64 -t http-api-tool-test
+docker build -f docker/Containerfile . --platform linux/arm64 -t http-api-tool-test
 ```
 
 The `requirements-docker.txt` file contains:
@@ -479,24 +480,13 @@ steps:
 For local development and testing:
 
 ```bash
-# Start local go-httpbin service
-make setup-go-httpbin
+# Build Docker image
+docker build -f docker/Containerfile -t http-api-tool .
 
-# Test Docker container against local service
-make test-with-httpbin
-
-# Manual testing with local service
-docker run --rm --network host \
-  -v $(PWD)/mkcert-ca.pem:/tmp/mkcert-ca.pem:ro \
-  http-api-tool \
-  test \
-  --url https://localhost:8080/get \
-  --http-method GET \
-  --expected-http-code 200 \
-  --ca-bundle-path /tmp/mkcert-ca.pem
-
-# Stop local service when done
-make stop-go-httpbin
+# Run container
+docker run --rm http-api-tool test \
+  --url https://example.com/api \
+  --expected-http-code 200
 ```
 
 The local go-httpbin service provides all the same endpoints as httpbin.org
@@ -568,6 +558,6 @@ Apache-2.0 License. See [LICENSE](LICENSE) for details.
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests for new functionality
+4. Add tests for new functionality (use `uv run pytest`)
 5. Run pre-commit hooks
 6. Submit a pull request

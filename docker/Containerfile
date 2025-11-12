@@ -4,7 +4,7 @@
 # UV version and checksums for secure installation with architecture-aware download
 # uv 0.8.4 - https://github.com/astral-sh/uv/releases/tag/0.8.4
 #
-# This Dockerfile automatically detects the target architecture (amd64/arm64) and
+# This Containerfile automatically detects the target architecture (amd64/arm64) and
 # downloads the appropriate uv binary with checksum validation to prevent MITM
 # attacks.
 #
