@@ -11,12 +11,10 @@ inputs:
   deploy:
     description: 'Deployment method: "uvx" (default, fast) or "docker" (containerized)'
     required: false
-    type: 'string'
     default: 'uvx'
   python_version:
     description: 'Python version (Note: uvx manages Python automatically; this input is ignored for deploy=uvx)'
     required: false
-    type: 'string'
     default: '3.11'
 
   # Mandatory
@@ -24,112 +22,90 @@ inputs:
     # Example: "http://username:password@127.0.0.1:8080/index.yaml"
     description: 'URL of API server/interface to check'
     required: true
-    type: 'string'
   auth_string:
     # Parsed from the URL string above, but can be provided explicitly
     # Should be in the format used by cURL, e.g. username:password
     # Will be passed to cURL using the flag: curl -c "username:password"
     description: 'Authentication string, colon separated username/password'
     required: false
-    type: 'string'
   service_name:
     # Example: 'ChartMuseum Repository'
     description: 'Name of HTTP/HTTPS API service tested'
     required: false
-    type: 'string'
     default: 'API Service'
   initial_sleep_time:
     description: 'Time in seconds between API service connection attempts'
     required: false
-    type: 'string'
     # Try once every second
     default: '1'
   max_delay:
     description: 'Maximum delay in seconds between retries'
     required: false
-    type: 'string'
     default: '30'
   retries:
     description: 'Number of retries before declaring service unavailable'
     required: false
-    type: 'string'
     default: '3'
   expected_http_code:
     description: 'HTTP response code to accept from the API service'
     required: false
-    type: 'string'
     default: '200'
   regex:
     # Extended regular expression; uses grep with the "-E" flag
     description: 'Verify server response with regular expression'
     required: false
-    type: 'string'
   show_header_json:
     description: "Display response header as JSON in action output"
     required: false
-    type: 'string'
     default: 'false'
   curl_timeout:
     description: 'Maximum time in seconds for cURL to wait for a response'
     required: false
-    type: 'string'
     default: '5'
   http_method:
     description: 'HTTP method to use (GET, POST, PUT, etc.)'
     required: false
-    type: 'string'
     default: 'GET'
   request_body:
     description: 'Data to send with POST/PUT/PATCH requests'
     required: false
-    type: 'string'
   content_type:
     description: 'Content type of the request body'
     required: false
-    type: 'string'
     default: 'application/json'
   request_headers:
     description: 'Custom HTTP headers sent in JSON format'
     required: false
-    type: 'string'
   verify_ssl:
     description: 'Verify SSL certificates'
     required: false
-    type: 'string'
     default: 'true'
   ca_bundle_path:
     description: 'Path to CA bundle file for SSL verification'
     required: false
-    type: 'string'
   include_response_body:
     description: 'Include response body in outputs (base64 encoded)'
     required: false
-    type: 'string'
     default: 'false'
   follow_redirects:
     description: 'Follow HTTP redirects'
     required: false
-    type: 'string'
     default: 'true'
   max_response_time:
     description: 'Maximum acceptable response time in seconds'
     required: false
-    type: 'string'
     default: '0'
   connection_reuse:
     description: 'Reuse connections between requests'
     required: false
-    type: 'string'
     default: 'true'
   debug:
     description: 'Enables debugging output'
     required: false
-    type: 'string'
     default: 'false'
   fail_on_timeout:
     description: 'Fail the action if response time exceeds max_response_time'
     required: false
-    type: 'string'
     default: 'false'
 
 outputs:
