@@ -169,12 +169,16 @@ isolation or specific container features.
 
 **Deployment Method Comparison:**
 
-| Feature | uvx (default) | docker |
-|---------|--------------|--------|
-| Speed | ⚡ Fast (~10s) | 🐌 Slower (~60s for build) |
-| Isolation | Process-level | Container-level |
-| Caching | PyPI cache | Docker layer cache |
-| Use Case | Most scenarios | Special isolation needs |
+<!-- markdownlint-disable MD060 -->
+
+| Feature   | uvx (default)  | docker                    |
+| --------- | -------------- | ------------------------- |
+| Speed     | ⚡ Fast (~10s)  | 🐌 Slower (~60s for build) |
+| Isolation | Process-level  | Container-level           |
+| Caching   | PyPI cache     | Docker layer cache        |
+| Use Case  | Most scenarios | Special isolation needs   |
+
+<!-- markdownlint-enable MD060 -->
 
 ### As a CLI Tool
 
@@ -206,49 +210,53 @@ uv run python -m http_api_tool test \
 
 <!-- markdownlint-disable MD013 -->
 
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `deploy` | Deployment method: `uvx` (fast, default) or `docker` (containerized) | No | `uvx` |
-| `python_version` | Python version to use when deploy=uvx | No | `3.11` |
-| `url` | URL of API server/interface to check | Yes | - |
-| `auth_string` | Authentication string, colon separated username/password | No | - |
-| `service_name` | Name of HTTP/HTTPS API service tested | No | `API Service` |
-| `initial_sleep_time` | Time in seconds between API service connection attempts | No | `1` |
-| `max_delay` | Max delay in seconds between retries | No | `30` |
-| `retries` | Number of retries before declaring service unavailable | No | `3` |
-| `expected_http_code` | HTTP response code to accept from the API service | No | `200` |
-| `regex` | Verify server response with regular expression | No | - |
-| `show_header_json` | Display response header as JSON in action output | No | `false` |
-| `curl_timeout` | Max time in seconds for cURL to wait for a response | No | `5` |
-| `http_method` | HTTP method to use (GET, POST, PUT, etc.) | No | `GET` |
-| `request_body` | Data to send with POST/PUT/PATCH requests | No | - |
-| `content_type` | Content type for the request body | No | `application/json` |
-| `request_headers` | Custom HTTP headers sent in JSON format | No | - |
-| `verify_ssl` | Verify SSL certificates | No | `true` |
-| `ca_bundle_path` | Path to CA bundle file for SSL verification | No | - |
-| `include_response_body` | Include response body in outputs (base64) | No | `false` |
-| `follow_redirects` | Follow HTTP redirects | No | `true` |
-| `max_response_time` | Max acceptable response time in seconds | No | `0` |
-| `connection_reuse` | Reuse connections between requests | No | `true` |
-| `debug` | Enables debugging output | No | `false` |
-| `fail_on_timeout` | Fail if response time exceeds max_response_time | No | `false` |
+| Input                   | Description                                                          | Required | Default            |
+| ----------------------- | -------------------------------------------------------------------- | -------- | ------------------ |
+| `deploy`                | Deployment method: `uvx` (fast, default) or `docker` (containerized) | No       | `uvx`              |
+| `python_version`        | Python version to use when deploy=uvx                                | No       | `3.11`             |
+| `url`                   | URL of API server/interface to check                                 | Yes      | -                  |
+| `auth_string`           | Authentication string, colon separated username/password             | No       | -                  |
+| `service_name`          | Name of HTTP/HTTPS API service tested                                | No       | `API Service`      |
+| `initial_sleep_time`    | Time in seconds between API service connection attempts              | No       | `1`                |
+| `max_delay`             | Max delay in seconds between retries                                 | No       | `30`               |
+| `retries`               | Number of retries before declaring service unavailable               | No       | `3`                |
+| `expected_http_code`    | HTTP response code to accept from the API service                    | No       | `200`              |
+| `regex`                 | Verify server response with regular expression                       | No       | -                  |
+| `show_header_json`      | Display response header as JSON in action output                     | No       | `false`            |
+| `curl_timeout`          | Max time in seconds for cURL to wait for a response                  | No       | `5`                |
+| `http_method`           | HTTP method to use (GET, POST, PUT, etc.)                            | No       | `GET`              |
+| `request_body`          | Data to send with POST/PUT/PATCH requests                            | No       | -                  |
+| `content_type`          | Content type for the request body                                    | No       | `application/json` |
+| `request_headers`       | Custom HTTP headers sent in JSON format                              | No       | -                  |
+| `verify_ssl`            | Verify SSL certificates                                              | No       | `true`             |
+| `ca_bundle_path`        | Path to CA bundle file for SSL verification                          | No       | -                  |
+| `include_response_body` | Include response body in outputs (base64)                            | No       | `false`            |
+| `follow_redirects`      | Follow HTTP redirects                                                | No       | `true`             |
+| `max_response_time`     | Max acceptable response time in seconds                              | No       | `0`                |
+| `connection_reuse`      | Reuse connections between requests                                   | No       | `true`             |
+| `debug`                 | Enables debugging output                                             | No       | `false`            |
+| `fail_on_timeout`       | Fail if response time exceeds max_response_time                      | No       | `false`            |
 
 <!-- markdownlint-enable MD013 -->
 
 ## Outputs
 
-| Output | Description |
-|--------|-------------|
-| `time_delay` | Number of seconds waiting for service availability/failure |
-| `response_http_code` | HTTP response code received from the server |
-| `response_header_json` | HTTP response header as JSON |
-| `response_header_size` | HTTP response header size in bytes |
-| `response_body_size` | HTTP response body size in bytes |
-| `regex_match` | Whether the regular expression matched the server reply |
-| `response_body_base64` | Response body base64 encoded (when enabled) |
-| `total_time` | Total time for the request in seconds |
-| `connect_time` | Time to establish connection in seconds |
-| `response_time_exceeded` | Whether response time exceeded max time |
+<!-- markdownlint-disable MD013 -->
+
+| Output                   | Description                                                |
+| ------------------------ | ---------------------------------------------------------- |
+| `time_delay`             | Number of seconds waiting for service availability/failure |
+| `response_http_code`     | HTTP response code received from the server                |
+| `response_header_json`   | HTTP response header as JSON                               |
+| `response_header_size`   | HTTP response header size in bytes                         |
+| `response_body_size`     | HTTP response body size in bytes                           |
+| `regex_match`            | Whether the regular expression matched the server reply    |
+| `response_body_base64`   | Response body base64 encoded (when enabled)                |
+| `total_time`             | Total time for the request in seconds                      |
+| `connect_time`           | Time to establish connection in seconds                    |
+| `response_time_exceeded` | Whether response time exceeded max time                    |
+
+<!-- markdownlint-enable MD013 -->
 
 ## Authentication
 

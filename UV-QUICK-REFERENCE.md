@@ -90,17 +90,17 @@ make ci
 
 ## Makefile Shortcuts
 
-| Command | Description |
-|---------|-------------|
-| `make install` | Install production dependencies |
-| `make install-dev` | Install all dependencies |
-| `make test` | Run tests |
-| `make test-cov` | Run tests with coverage |
-| `make lint` | Run linting checks |
-| `make format` | Format code |
-| `make clean` | Clean build artifacts |
-| `make docker-build` | Build Docker image |
-| `make bootstrap` | Complete setup from scratch |
+| Command             | Description                     |
+| ------------------- | ------------------------------- |
+| `make install`      | Install production dependencies |
+| `make install-dev`  | Install all dependencies        |
+| `make test`         | Run tests                       |
+| `make test-cov`     | Run tests with coverage         |
+| `make lint`         | Run linting checks              |
+| `make format`       | Format code                     |
+| `make clean`        | Clean build artifacts           |
+| `make docker-build` | Build Docker image              |
+| `make bootstrap`    | Complete setup from scratch     |
 
 ---
 
@@ -126,15 +126,15 @@ make test-with-httpbin
 
 ### Command Mapping
 
-| PDM Command | UV Command |
-|-------------|------------|
-| `pdm install` | `uv sync --frozen --no-dev` |
-| `pdm install --dev` | `uv sync --frozen` |
-| `pdm install -G test` | `uv sync --frozen --group test` |
-| `pdm run <cmd>` | `uv run <cmd>` |
-| `pdm add <pkg>` | Edit `pyproject.toml` + `uv lock` |
-| `pdm update` | `uv lock --upgrade` |
-| `pdm list` | `uv pip list` |
+| PDM Command           | UV Command                        |
+| --------------------- | --------------------------------- |
+| `pdm install`         | `uv sync --frozen --no-dev`       |
+| `pdm install --dev`   | `uv sync --frozen`                |
+| `pdm install -G test` | `uv sync --frozen --group test`   |
+| `pdm run <cmd>`       | `uv run <cmd>`                    |
+| `pdm add <pkg>`       | Edit `pyproject.toml` + `uv lock` |
+| `pdm update`          | `uv lock --upgrade`               |
+| `pdm list`            | `uv pip list`                     |
 
 ### First-Time Migration
 
@@ -205,14 +205,14 @@ docker build -t http-api-tool .
 
 ## Key Differences from PDM
 
-| Feature | PDM | UV |
-|---------|-----|-----|
-| Speed | Moderate | 10-100x faster |
-| Lock file | `pdm.lock` (586 KB) | `uv.lock` (145 KB) |
-| Cache location | `~/.cache/pdm` | `~/.cache/uv` |
-| Run commands | `pdm run` | `uv run` |
-| Add packages | `pdm add` | Edit toml + `uv lock` |
-| Build backend | `pdm-backend` | `hatchling` |
+| Feature        | PDM                 | UV                    |
+| -------------- | ------------------- | --------------------- |
+| Speed          | Moderate            | 10-100x faster        |
+| Lock file      | `pdm.lock` (586 KB) | `uv.lock` (145 KB)    |
+| Cache location | `~/.cache/pdm`      | `~/.cache/uv`         |
+| Run commands   | `pdm run`           | `uv run`              |
+| Add packages   | `pdm add`           | Edit toml + `uv lock` |
+| Build backend  | `pdm-backend`       | `hatchling`           |
 
 ---
 

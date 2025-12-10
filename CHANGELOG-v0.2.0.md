@@ -130,23 +130,27 @@ deployment option.
 
 ## 📊 Performance Comparison
 
-| Metric | uvx (default) | docker |
-|--------|---------------|--------|
-| **Cold Start** | ~10 seconds | ~60 seconds |
-| **Cached Run** | ~5 seconds | ~15 seconds |
-| **Build Required** | ❌ No | ✅ Yes |
-| **Container Overhead** | ❌ None | ✅ Yes |
-| **PyPI Cache** | ✅ Used | ❌ N/A |
+<!-- markdownlint-disable MD060 -->
+
+| Metric                 | uvx (default) | docker      |
+| ---------------------- | ------------- | ----------- |
+| **Cold Start**         | ~10 seconds   | ~60 seconds |
+| **Cached Run**         | ~5 seconds    | ~15 seconds |
+| **Build Required**     | ❌ No          | ✅ Yes       |
+| **Container Overhead** | ❌ None        | ✅ Yes       |
+| **PyPI Cache**         | ✅ Used        | ❌ N/A       |
+
+<!-- markdownlint-enable MD060 -->
 
 ### Docker Image Performance
 
-| Metric | Value |
-|--------|-------|
-| **Build Time** | ~10-15 minutes (multi-arch) |
-| **Image Size** | ~150 MB (compressed) |
-| **Architectures** | linux/amd64, linux/arm64 |
-| **Registry** | ghcr.io |
-| **Caching** | Layer caching enabled |
+| Metric            | Value                       |
+| ----------------- | --------------------------- |
+| **Build Time**    | ~10-15 minutes (multi-arch) |
+| **Image Size**    | ~150 MB (compressed)        |
+| **Architectures** | linux/amd64, linux/arm64    |
+| **Registry**      | ghcr.io                     |
+| **Caching**       | Layer caching enabled       |
 
 ---
 
