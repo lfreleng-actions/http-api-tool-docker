@@ -93,7 +93,7 @@ jobs:
       - name: 'Build Python project'
         id: 'python-build'
         # yamllint disable-line rule:line-length
-        uses: lfreleng-actions/python-build-action@57967a0bef5647e300f70bb24f5667f55b409fed # v1.0.1
+        uses: lfreleng-actions/python-build-action@8f567398591014dd5627961aaa9ec17816b072f0 # v1.0.2
         with:
           sigstore_sign: true
           attestations: true
