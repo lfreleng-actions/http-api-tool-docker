@@ -104,7 +104,7 @@ repos:
   # Replaces: https://github.com/rhysd/actionlint
   # Permits actionlint to run both locally and with precommit.ci/GitHub
   - repo: https://github.com/Mateusz-Grzelinski/actionlint-py
-    rev: 381d5e68de9fe958938da811f2e094a8f90e8195  # frozen: v1.7.9.24
+    rev: 85c37735ea69e5baf0681530e57e63deee0ce733  # frozen: v1.7.10.24
     hooks:
       - id: actionlint
 
