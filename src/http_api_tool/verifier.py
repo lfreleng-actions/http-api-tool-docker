@@ -509,7 +509,8 @@ class HTTPAPITester:
             }
 
         except pycurl.error as e:
-            error_code, error_msg = e.args
+            error_code = e.args[0] if len(e.args) > 0 else 0
+            error_msg = e.args[1] if len(e.args) > 1 else str(e)
             return {
                 "success": False,
                 "http_code": 0,
