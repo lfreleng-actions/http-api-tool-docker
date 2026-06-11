@@ -151,9 +151,15 @@ runs:
     # Validate deploy input
     - name: Validate deploy input
       shell: bash
+      env:
+        INPUT_DEPLOY: ${{ inputs.deploy }}
       run: |
-        if [[ "${{ inputs.deploy }}" != "uvx" && "${{ inputs.deploy }}" != "docker" ]]; then
-          echo "::error::Invalid deploy input: '${{ inputs.deploy }}'. Must be 'uvx' or 'docker'."
+        if [[ "$INPUT_DEPLOY" != "uvx" && "$INPUT_DEPLOY" != "docker" ]]; then
+          # Strip CR/LF from the user value so it cannot inject additional
+          # workflow commands/annotations into the log command stream.
+          deploy_safe="${INPUT_DEPLOY//$'\n'/}"
+          deploy_safe="${deploy_safe//$'\r'/}"
+          echo "::error::Invalid deploy input: '$deploy_safe'. Must be 'uvx' or 'docker'."
           exit 1
         fi
 
@@ -193,11 +199,12 @@ runs:
         INPUT_CONNECTION_REUSE: ${{ inputs.connection_reuse }}
         INPUT_DEBUG: ${{ inputs.debug }}
         INPUT_FAIL_ON_TIMEOUT: ${{ inputs.fail_on_timeout }}
+        INPUT_USE_LOCAL_CODE: ${{ inputs.use_local_code }}
         GITHUB_ACTIONS: 'true'
         GITHUB_OUTPUT: ${{ env.GITHUB_OUTPUT }}
         GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
       run: |
-        if [[ "${{ inputs.use_local_code }}" == "true" ]]; then
+        if [[ "$INPUT_USE_LOCAL_CODE" == "true" ]]; then
           if ! command -v http-api-tool &> /dev/null; then
             echo "::error::http-api-tool is not installed." \
               "Please install it first by running 'uv pip install --system -e .'" \
@@ -257,12 +264,42 @@ runs:
         INPUT_FAIL_ON_TIMEOUT: ${{ inputs.fail_on_timeout }}
         GITHUB_ACTIONS: 'true'
       run: |
-        # Build volume mounts for Docker
-        VOLUME_MOUNTS="-v $GITHUB_OUTPUT:$GITHUB_OUTPUT"
+        # Build volume mounts as an array so each '-v' entry is passed as a
+        # single quoted argument and cannot inject extra docker flags/mounts.
+        VOLUME_MOUNTS=(-v "$GITHUB_OUTPUT:$GITHUB_OUTPUT")
 
         # Mount CA bundle if specified
-        if [ -n "${{ inputs.ca_bundle_path }}" ] && [ -f "${{ inputs.ca_bundle_path }}" ]; then
-          VOLUME_MOUNTS="$VOLUME_MOUNTS -v ${{ inputs.ca_bundle_path }}:${{ inputs.ca_bundle_path }}:ro"
+        if [ -n "$INPUT_CA_BUNDLE_PATH" ] && [ -f "$INPUT_CA_BUNDLE_PATH" ]; then
+          # Reject traversal, shell metacharacters, whitespace, and ':'.
+          # ':' is the docker volume field separator, so allowing it would let
+          # a caller append extra mount options (e.g. ':rw') or fields;
+          # whitespace would break argument boundaries.
+          if printf '%s' "$INPUT_CA_BUNDLE_PATH" \
+            | grep -qE '\.\.(/|$)|[;|&$`:[:space:]]'; then
+            echo "::error::ca_bundle_path contains invalid characters"
+            exit 1
+          fi
+          # Constrain to an allowlist of safe roots: the workspace, the runner
+          # temp dir, or standard system CA-certificate locations. This blocks
+          # mounting arbitrary sensitive host files (e.g. /etc/shadow) while
+          # still supporting genuine CA bundles.
+          ca_real="$(readlink -f -- "$INPUT_CA_BUNDLE_PATH")"
+          ca_allowed=false
+          for root in "$GITHUB_WORKSPACE" "$RUNNER_TEMP" \
+            /etc/ssl /etc/pki /etc/ca-certificates \
+            /usr/share/ca-certificates /usr/local/share/ca-certificates; do
+            [ -n "$root" ] || continue
+            root_real="$(readlink -f -- "$root" 2>/dev/null)" || continue
+            case "$ca_real/" in
+              "$root_real"/*) ca_allowed=true; break ;;
+            esac
+          done
+          if [ "$ca_allowed" != true ]; then
+            echo "::error::ca_bundle_path must be within the workspace, the" \
+              "runner temp dir, or a standard CA-certificate location"
+            exit 1
+          fi
+          VOLUME_MOUNTS+=(-v "${ca_real}:${ca_real}:ro")
         fi
 
         docker run --rm \
@@ -292,7 +329,7 @@ runs:
           -e INPUT_FAIL_ON_TIMEOUT \
           -e GITHUB_ACTIONS \
           -e GITHUB_OUTPUT \
-          $VOLUME_MOUNTS \
+          "${VOLUME_MOUNTS[@]}" \
           http-api-tool:${{ github.run_id }}
 
     - name: Cleanup Docker image
