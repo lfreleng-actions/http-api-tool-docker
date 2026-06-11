@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2025 The Linux Foundation
 
 # UV version and checksums for secure installation with architecture-aware download
-# uv 0.8.4 - https://github.com/astral-sh/uv/releases/tag/0.8.4
+# uv 0.11.20 - https://github.com/astral-sh/uv/releases/tag/0.11.20
 #
 # This Containerfile automatically detects the target architecture (amd64/arm64) and
 # downloads the appropriate uv binary with checksum validation to prevent MITM
@@ -11,9 +11,9 @@
 # To override the version: docker build --build-arg UV_VERSION=0.8.3 .
 # Supports: linux/amd64 (Intel/AMD x86_64) and linux/arm64 (Apple Silicon/ARM64)
 ARG VERSION=0.0.0
-ARG UV_VERSION=0.8.4
-ARG UV_CHECKSUM_AMD64=eb61d39fdc6ea21a6d00a24b50376102168240849c5022d3eba331f972ba3934
-ARG UV_CHECKSUM_ARM64=d42742a28ce161e72cce45c8c5621ee23317e30d461f595c382acf0f9b331f20
+ARG UV_VERSION=0.11.20
+ARG UV_CHECKSUM_AMD64=5de211d9278af365497d387e25316907b3b4a9f25b4476dd6dbf238d6f85cff3
+ARG UV_CHECKSUM_ARM64=c8b5b7f9c804b640da0bb66cddddf0a00ce971f64d8076622d70bd141bc80857
 
 # Cache bust: Migrated from PDM to UV - change this value to force rebuild
 ARG CACHE_BUST=2025-12-11-uv-migration
