@@ -52,7 +52,7 @@ repos:
         args: [--config-file=.yamllint]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 3b3f7c3f57fe9925356faf5fe6230835138be230  # frozen: v0.15.17
+    rev: 77039ccbba72c8aede339c5f8ae29b42aced0a2e  # frozen: v0.15.18
     hooks:
       - id: ruff
         # Currently only src and tests contain Python files
@@ -91,7 +91,7 @@ repos:
       - id: shellcheck
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: e72a3ca1632f0b11a07d171449fe447a7ff6795e  # frozen: v0.48.0
+    rev: a4d5d37e66ebcd6b3705204a1d6dbb56dea66338  # frozen: v0.49.0
     hooks:
       - id: markdownlint
         args: ["--fix"]
@@ -121,7 +121,7 @@ repos:
       - id: basedpyright
 
   - repo: https://github.com/modeseven-lfit/gha-workflow-linter
-    rev: 1a307fd9eed98268b11300ab86b1a107e1d3d1ae  # frozen: v1.1.1
+    rev: bfc5489483353425f8e023902d91c3ae3584f955  # frozen: v1.2.0
     hooks:
       - id: gha-workflow-linter
         args: [lint, .]
