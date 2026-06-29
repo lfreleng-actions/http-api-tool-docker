@@ -52,7 +52,7 @@ repos:
         args: [--config-file=.yamllint]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 77039ccbba72c8aede339c5f8ae29b42aced0a2e  # frozen: v0.15.18
+    rev: c59bba8fb259db0fec2bbb77ad8ba51ea7341b56  # frozen: v0.15.20
     hooks:
       - id: ruff
         # Currently only src and tests contain Python files
@@ -116,12 +116,12 @@ repos:
         args: ["--ignore-words=.codespell"]
 
   - repo: https://github.com/DetachHead/basedpyright-prek-mirror
-    rev: 5f6f2cb9fa8aec15105f77fd21e8dfe29838b16d  # frozen: 1.39.8
+    rev: d55eabd2531b4f4a4c49c30fba627ce3a636ab79  # frozen: 1.39.9
     hooks:
       - id: basedpyright
 
   - repo: https://github.com/modeseven-lfit/gha-workflow-linter
-    rev: bfc5489483353425f8e023902d91c3ae3584f955  # frozen: v1.2.0
+    rev: 7be2cdacfacf04d67a01e8424012adcc79ca9a86  # frozen: v1.2.1
     hooks:
       - id: gha-workflow-linter
         args: [lint, .]
