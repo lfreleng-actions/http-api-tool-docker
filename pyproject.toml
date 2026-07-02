@@ -191,9 +191,3 @@ pythonVersion = "3.10"
 typeCheckingMode = "standard"
 reportMissingImports = "warning"
 reportUninitializedInstanceVariable = "warning"
-
-[tool.uv]
-# Supply-chain cooldown: do not resolve anything published in the last
-# 7 days (rolling window; uv records it as a relative span in uv.lock).
-# Requires uv >= 0.9.17 for the relative-duration ("7 days") form.
-exclude-newer = "7 days"
