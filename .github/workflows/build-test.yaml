@@ -40,14 +40,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      actions: write
+      actions: write  # Purge GitHub Actions caches via the API
     steps:
       - name: Purge all GitHub Actions caches
         run: |
           echo "🗑️ Purging all GitHub Actions caches for this repository..."
 
           # Get all cache keys using GitHub API
-          REPO="${{ github.repository }}"
+          REPO="$REPOSITORY"
 
           echo "Fetching cache list..."
           gh api -X GET "/repos/$REPO/actions/caches" --paginate | \
@@ -60,6 +60,7 @@ jobs:
           echo "✅ All caches purged successfully"
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
 
   # Build Docker image with comprehensive caching
   docker-build:
@@ -81,6 +82,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       # Set up Docker Buildx with caching
       - name: Set up Docker Buildx
@@ -128,6 +131,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       # Set up go-httpbin for testing
       - name: Setup go-httpbin HTTPS service
@@ -197,7 +202,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      packages: write
+      packages: write  # Push container images to GHCR
 
     steps:
       # Harden the runner
@@ -208,6 +213,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       # Set up Docker Buildx
       - name: Set up Docker Buildx
@@ -284,6 +291,8 @@ jobs:
           egress-policy: 'audit'
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       # Setup Python with enhanced caching
       - name: Set up Python
@@ -331,6 +340,8 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       # Setup Python with comprehensive caching
       - name: Set up Python
@@ -380,6 +391,8 @@ jobs:
           egress-policy: 'audit'
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       # Setup Python with comprehensive caching
       - name: Set up Python
@@ -427,6 +440,8 @@ jobs:
           egress-policy: 'audit'
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       # Setup Python with comprehensive caching
       - name: Set up Python
@@ -548,6 +563,8 @@ jobs:
           egress-policy: 'audit'
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
@@ -607,6 +624,8 @@ jobs:
           egress-policy: 'audit'
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
@@ -720,6 +739,8 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
@@ -778,7 +799,7 @@ jobs:
     if: github.event_name != 'pull_request'
     permissions:
       contents: read
-      packages: read
+      packages: read  # Pull published container images from GHCR
     timeout-minutes: 15
 
     steps:
@@ -789,6 +810,8 @@ jobs:
           egress-policy: audit
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       # Set up Docker Buildx
       - name: Set up Docker Buildx
@@ -805,7 +828,7 @@ jobs:
       # Test Docker image functionality
       - name: Test Docker image functionality
         run: |
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          IMAGE_TAG="${REGISTRY}/${IMAGE_NAME}:latest"
           echo "Testing published image: $IMAGE_TAG"
 
           # Test basic help command
@@ -821,7 +844,7 @@ jobs:
 
       - name: Test Docker image with go-httpbin
         run: |
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          IMAGE_TAG="${REGISTRY}/${IMAGE_NAME}:latest"
           echo "Using image tag: $IMAGE_TAG"
 
           # Get service URL and CA bundle from go-httpbin action
@@ -860,6 +883,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       # Setup Python with caching
       - name: Set up Python
