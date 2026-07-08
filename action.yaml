@@ -224,13 +224,15 @@ runs:
       if: inputs.deploy == 'docker'
       shell: bash
       working-directory: ${{ github.action_path }}
+      env:
+        RUN_ID: ${{ github.run_id }}
       run: |
         # Check if the image already exists (pre-loaded from artifact)
-        if docker image inspect http-api-tool:${{ github.run_id }} >/dev/null 2>&1; then
-          echo "::notice::Using pre-loaded Docker image http-api-tool:${{ github.run_id }}"
+        if docker image inspect "http-api-tool:${RUN_ID}" >/dev/null 2>&1; then
+          echo "::notice::Using pre-loaded Docker image http-api-tool:${RUN_ID}"
         else
-          echo "::notice::Building Docker image http-api-tool:${{ github.run_id }}"
-          docker build -f docker/Containerfile -t http-api-tool:${{ github.run_id }} .
+          echo "::notice::Building Docker image http-api-tool:${RUN_ID}"
+          docker build -f docker/Containerfile -t "http-api-tool:${RUN_ID}" .
         fi
 
     - name: Run http-api-tool via Docker
@@ -263,6 +265,7 @@ runs:
         INPUT_DEBUG: ${{ inputs.debug }}
         INPUT_FAIL_ON_TIMEOUT: ${{ inputs.fail_on_timeout }}
         GITHUB_ACTIONS: 'true'
+        RUN_ID: ${{ github.run_id }}
       run: |
         # Build volume mounts as an array so each '-v' entry is passed as a
         # single quoted argument and cannot inject extra docker flags/mounts.
@@ -330,10 +333,12 @@ runs:
           -e GITHUB_ACTIONS \
           -e GITHUB_OUTPUT \
           "${VOLUME_MOUNTS[@]}" \
-          http-api-tool:${{ github.run_id }}
+          "http-api-tool:${RUN_ID}"
 
     - name: Cleanup Docker image
       if: inputs.deploy == 'docker' && always()
       shell: bash
+      env:
+        RUN_ID: ${{ github.run_id }}
       run: |
-        docker rmi http-api-tool:${{ github.run_id }} || true
+        docker rmi "http-api-tool:${RUN_ID}" || true
