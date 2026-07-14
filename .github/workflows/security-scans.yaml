@@ -31,6 +31,8 @@ concurrency:
 jobs:
   sonatype-lifecycle:
     name: "Sonatype Lifecycle"
+    permissions:
+      contents: read  # Reusable scan job checks out the repo
     # yamllint disable-line rule:line-length
     uses: lfit/releng-reusable-workflows/.github/workflows/reuse-sonatype-lifecycle.yaml@fd3c1b43bc919e9e70787b009ffa2768ddbb1267 # v0.7.2
     secrets:
@@ -42,10 +44,10 @@ jobs:
     # yamllint disable-line rule:line-length
     uses: lfit/releng-reusable-workflows/.github/workflows/reuse-sonarqube-cloud.yaml@fd3c1b43bc919e9e70787b009ffa2768ddbb1267 # v0.7.2
     permissions:
+      contents: read  # Reusable scan job checks out the repo
       security-events: write  # Upload results to the code-scanning dashboard
       id-token: write  # Publish results and obtain a badge via OIDC
-      # Uncomment the permissions below if installing in a private repository.
-      # contents: read
+      # Uncomment the permission below if installing in a private repository.
       # actions: read
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
