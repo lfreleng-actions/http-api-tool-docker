@@ -136,7 +136,7 @@ jobs:
 
       # Set up go-httpbin for testing
       - name: Setup go-httpbin HTTPS service
-        uses: lfreleng-actions/go-httpbin-action@6cd62896c7fa4c892826afe182b66523f34c2226 # v0.1.4
+        uses: lfreleng-actions/go-httpbin-action@8b66d1d684264a26f4b087c94485aeb2be45cea7 # v0.1.5
         id: go-httpbin
         with:
           debug: 'true'
@@ -483,7 +483,7 @@ jobs:
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
         id: go-httpbin
-        uses: lfreleng-actions/go-httpbin-action@6cd62896c7fa4c892826afe182b66523f34c2226 # v0.1.4
+        uses: lfreleng-actions/go-httpbin-action@8b66d1d684264a26f4b087c94485aeb2be45cea7 # v0.1.5
         with:
           port: '8080'
           debug: 'true'
@@ -569,7 +569,7 @@ jobs:
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
         id: go-httpbin
-        uses: lfreleng-actions/go-httpbin-action@6cd62896c7fa4c892826afe182b66523f34c2226 # v0.1.4
+        uses: lfreleng-actions/go-httpbin-action@8b66d1d684264a26f4b087c94485aeb2be45cea7 # v0.1.5
         with:
           port: '8080'
           debug: 'true'
@@ -630,7 +630,7 @@ jobs:
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
         id: go-httpbin
-        uses: lfreleng-actions/go-httpbin-action@6cd62896c7fa4c892826afe182b66523f34c2226 # v0.1.4
+        uses: lfreleng-actions/go-httpbin-action@8b66d1d684264a26f4b087c94485aeb2be45cea7 # v0.1.5
         with:
           port: '8080'
           debug: 'true'
@@ -745,7 +745,7 @@ jobs:
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
         id: go-httpbin
-        uses: lfreleng-actions/go-httpbin-action@6cd62896c7fa4c892826afe182b66523f34c2226 # v0.1.4
+        uses: lfreleng-actions/go-httpbin-action@8b66d1d684264a26f4b087c94485aeb2be45cea7 # v0.1.5
         with:
           port: '8080'
           debug: 'true'
@@ -837,7 +837,7 @@ jobs:
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
         id: go-httpbin
-        uses: lfreleng-actions/go-httpbin-action@6cd62896c7fa4c892826afe182b66523f34c2226 # v0.1.4
+        uses: lfreleng-actions/go-httpbin-action@8b66d1d684264a26f4b087c94485aeb2be45cea7 # v0.1.5
         with:
           port: '8080'
           debug: 'true'
