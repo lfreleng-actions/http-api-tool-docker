@@ -53,7 +53,7 @@ repos:
         args: [--config-file=.yamllint]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: aab412d509121cb5f7533134b7e67f9fab59c682  # frozen: v0.16.4
+    rev: 1f1e8bf348ff38fc88619a38d3ca4d9c56abea49  # frozen: v0.16.5
     hooks:
       - id: ruff
         files: ^(src|tests|scripts)/.+\.py$
@@ -118,7 +118,7 @@ repos:
       - id: basedpyright
 
   - repo: https://github.com/modeseven-lfit/gha-workflow-linter
-    rev: 42aa4db931ab4c9da0930ae5ca2259ab08da79cb  # frozen: v1.5.2
+    rev: cae470a1e8988c3cacbe9cc40a0d6b8e6881bde2  # frozen: v1.5.5
     hooks:
       - id: gha-workflow-linter
         args: [lint, .]
