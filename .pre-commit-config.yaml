@@ -53,7 +53,7 @@ repos:
         args: [--config-file=.yamllint]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 321478e58f4938179c6b86e4ddfa923d1547a49b  # frozen: v0.16.6
+    rev: e8f7d69b957a30acb2c875078d5fd012de24b64c  # frozen: v0.16.7
     hooks:
       - id: ruff
         files: ^(src|tests|scripts)/.+\.py$
@@ -113,7 +113,7 @@ repos:
         args: ["--ignore-words=.codespell"]
 
   - repo: https://github.com/DetachHead/basedpyright-prek-mirror
-    rev: 3c94d276aa3005fa1f5a977946c9dc106135c083  # frozen: 1.39.10
+    rev: 706e6acebe9e88c2c28d1527d3085a14b11794c4  # frozen: 1.40.1
     hooks:
       - id: basedpyright
 
