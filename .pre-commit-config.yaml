@@ -4,19 +4,32 @@
 
 ci:
   autofix_prs: false
-  skip: [gha-workflow-linter]
+  skip:
+    - gha-workflow-linter
+    - aislop
   autofix_commit_msg: |
-    Chore: pre-commit autofixes
+    Chore: Pre-commit autofixes
 
     Signed-off-by: pre-commit-ci[bot] <pre-commit-ci@users.noreply.github.com>
   autoupdate_commit_msg: |
-    Chore: pre-commit autoupdate
+    Chore: Pre-commit autoupdate
 
     Signed-off-by: pre-commit-ci[bot] <pre-commit-ci@users.noreply.github.com>
+
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
 
 exclude: "^docs/conf.py"
 
 repos:
+  - repo: local
+    hooks:
+      - id: frozen-rev-is-a-release
+        name: frozen revs name a release
+        language: pygrep
+        entry: '#\s*frozen:\s+(?!v?[0-9]+(\.[0-9]+)*(-[0-9]+)?\s*$|\s)'
+        files: '^\.pre-commit-config\.yaml$'
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
@@ -40,8 +53,14 @@ repos:
           - --branch=rc
           - --branch=production
 
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 2ca41cc1372d1e939a6a879f18cdc19fc1cac1ce  # frozen: v8.30.0
+    hooks:
+      - id: gitleaks
+        always_run: true
+
   - repo: https://github.com/jorisroovers/gitlint
-    rev: acc9d9de6369b76d22cb4167029d2035e8730b98 # frozen: v0.19.1
+    rev: acc9d9de6369b76d22cb4167029d2035e8730b98  # frozen: v0.19.1
     hooks:
       - id: gitlint
 
@@ -72,12 +91,10 @@ repos:
     hooks:
       - id: interrogate
         args: [--config=pyproject.toml]
-        # Currently only src contains Python files that need docstrings
-        # Tests are excluded via pyproject.toml configuration
         files: ^src/.+\.py$
 
   - repo: https://github.com/btford/write-good
-    rev: ab66ce10136dfad5146e69e70f82a3efac8842c1 # frozen: v1.0.8
+    rev: ab66ce10136dfad5146e69e70f82a3efac8842c1  # frozen: v1.0.8
     hooks:
       - id: write-good
         files: "\\.(rst|md|markdown|mdown|mkdn)$"
@@ -98,14 +115,11 @@ repos:
     hooks:
       - id: reuse
 
-  # Replaces: https://github.com/rhysd/actionlint
-  # Permits actionlint to run both locally and with precommit.ci/GitHub
-  - repo: https://github.com/Mateusz-Grzelinski/actionlint-py
-    rev: c04ed26e40637cab1aa9879c693832a9c120fb20  # frozen: v1.7.12.24
+  - repo: https://github.com/kjanat/actionlint
+    rev: 08bb2c4f0d039744455b87aef1c647fb8b66d37b  # frozen: v1.17.0
     hooks:
-      - id: actionlint
+      - id: actionlint-shellcheck
 
-  # Check for misspellings in documentation files
   - repo: https://github.com/codespell-project/codespell
     rev: 57b21406f092110c18776e39b0bda50d37c945c8  # frozen: v2.4.3
     hooks:
@@ -117,16 +131,26 @@ repos:
     hooks:
       - id: basedpyright
 
-  - repo: https://github.com/modeseven-lfit/gha-workflow-linter
+  - repo: https://github.com/lfreleng-actions/gha-workflow-linter
     rev: 445a55d2a15b12217828eecf8d4bf7741e0e1360  # frozen: v1.5.6
     hooks:
       - id: gha-workflow-linter
         args: [lint, .]
 
-  - repo: https://github.com/python-jsonschema/check-jsonschema.git
-    rev: c4654a7e007c9619a5eb63c39a456572a0fa1851  # frozen: 0.38.0
+  - repo: local
     hooks:
-      # - id: check-github-actions
+      - id: aislop
+        name: aislop
+        entry: aislop ci --human
+        language: node
+        additional_dependencies: ["aislop@0.13.1"]
+        pass_filenames: false
+        always_run: true
+
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0494aa7fa1314e98913a41227d8f0a515b2c1049  # frozen: 0.38.2
+    hooks:
+      - id: check-github-actions
       - id: check-github-workflows
       - id: check-jsonschema
         name: Check GitHub Workflows set timeout-minutes
