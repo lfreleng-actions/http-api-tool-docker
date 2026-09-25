@@ -1,0 +1,10 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2025 The Linux Foundation
+
+paths:
+  .github/workflows/build-test.yaml:
+    ignore:
+      # The fork rejects a bare '$/' (an action at the repository
+      # root), which GitHub accepts and runs.
+      - 'specifying action "\$/" in invalid format because path is missing'

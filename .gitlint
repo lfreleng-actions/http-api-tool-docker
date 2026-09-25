@@ -1,37 +1,30 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2025 The Linux Foundation
 
-# All these sections are optional, edit this file as you like.
 [general]
-# Ignore certain rules, you can reference them by their id or by their full
-# name
-# ignore=title-trailing-punctuation, T3
-
-# verbosity should be a value between 1 and 3, the command line -v flags take
-# precedence over this
-# verbosity = 2
-
-# By default gitlint will ignore merge commits. Set to 'false' to disable.
-# ignore-merge-commits=true
-
-# By default gitlint will ignore fixup commits. Set to 'false' to disable.
-# ignore-fixup-commits=true
-
-# By default gitlint will ignore squash commits. Set to 'false' to disable.
-# ignore-squash-commits=true
-
-# Enable debug mode (prints more output). Disabled by default.
-# debug=true
-
-# Set the extra-path where gitlint will search for user defined rules
-# See http://jorisroovers.github.io/gitlint/user_defined_rules for details
-# extra-path=examples/
-
+regex-style-search=true
 contrib=contrib-title-conventional-commits,contrib-body-requires-signed-off-by
+
+[title-max-length]
+line-length=50
+
+# Anchored because gitlint v0.19.1 calls search() for this rule; an
+# unanchored pattern would match anywhere in the title and never fail.
+[title-match-regex]
+regex=^[A-Z][a-zA-Z]*(\([^)]+\))?!?: [A-Z]
+
+[body-max-line-length]
+line-length=72
 
 [contrib-title-conventional-commits]
 types=Fix,Feat,Chore,Docs,Style,Refactor,Perf,Test,Revert,CI,Build
 
-# Disable linting on lines that have URLs on them
+# A DCO trailer cannot be wrapped, so waive B1 for commits carrying one
+# longer than 72 characters. [ignore-body-lines] cannot be used: it
+# would hide the sign-off from the signed-off-by check.
+[ignore-by-body]
+regex=^(?=(Signed-off-by|Co-authored-by): ).{73,}
+ignore=B1
+
 [ignore-body-lines]
 regex=(.*)https?://(.*)
