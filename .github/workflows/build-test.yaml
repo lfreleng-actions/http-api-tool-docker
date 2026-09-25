@@ -130,11 +130,6 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
       # Set up go-httpbin for testing
       - name: Setup go-httpbin HTTPS service
         uses: lfreleng-actions/go-httpbin-action@b0fcc716270b4975172449a293173e679773d17e # v0.1.6
@@ -145,7 +140,7 @@ jobs:
 
       # Test 1: Basic GET request
       - name: Test Basic GET request
-        uses: ./
+        uses: $/
         with:
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/get'
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
@@ -154,7 +149,7 @@ jobs:
 
       # Test 2: POST request with JSON
       - name: Test POST request with JSON
-        uses: ./
+        uses: $/
         with:
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/post'
           http_method: 'POST'
@@ -166,7 +161,7 @@ jobs:
 
       # Test 3: Custom headers
       - name: Test Custom headers
-        uses: ./
+        uses: $/
         with:
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/headers'
           request_headers: '{"X-Test-Header": "test-value", "X-API-Key": "secret123"}'
@@ -176,7 +171,7 @@ jobs:
 
       # Test 4: Error handling (404)
       - name: Test Error handling (404)
-        uses: ./
+        uses: $/
         with:
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/status/404'
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
@@ -185,7 +180,7 @@ jobs:
 
       # Test 5: Error handling (500)
       - name: Test Error handling (500)
-        uses: ./
+        uses: $/
         with:
           url: 'https://${{ steps.go-httpbin.outputs.host-gateway-ip }}:8080/status/500'
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
@@ -570,10 +565,6 @@ jobs:
         with:
           egress-policy: 'audit'
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
         id: go-httpbin
@@ -583,7 +574,7 @@ jobs:
           debug: 'true'
 
       - name: Test GitHub Action (local)
-        uses: ./
+        uses: $/
         with:
           url: '${{ steps.go-httpbin.outputs.service-url }}/get'
           service_name: 'HTTPBin Test Service'
@@ -593,7 +584,7 @@ jobs:
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
 
       - name: Test GitHub Action with POST
-        uses: ./
+        uses: $/
         with:
           url: '${{ steps.go-httpbin.outputs.service-url }}/post'
           service_name: 'HTTPBin POST Test'
@@ -604,7 +595,7 @@ jobs:
           ca_bundle_path: '${{ steps.go-httpbin.outputs.ca-cert-path }}'
 
       - name: Test GitHub Action error handling
-        uses: ./
+        uses: $/
         continue-on-error: true
         with:
           url: 'https://localhost:9999/nonexistent'
@@ -630,10 +621,6 @@ jobs:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: 'audit'
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
 
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
@@ -669,7 +656,7 @@ jobs:
           STEPS_GO_HTTPBIN_OUTPUTS_SERVICE_URL: ${{ steps.go-httpbin.outputs.service-url }}
 
       - name: Test uvx deployment with host URL
-        uses: ./
+        uses: $/
         with:
           deploy: 'uvx'
           url: '${{ steps.test-urls.outputs.host-url }}/get'
@@ -686,7 +673,7 @@ jobs:
           echo "UVX runs on the host, so it can access services via loopback interface"
 
       - name: Test docker deployment with gateway URL
-        uses: ./
+        uses: $/
         with:
           deploy: 'docker'
           url: '${{ steps.test-urls.outputs.gateway-url }}/get'
@@ -704,7 +691,7 @@ jobs:
 
 
       - name: Test uvx with POST request
-        uses: ./
+        uses: $/
         with:
           deploy: 'uvx'
           url: '${{ steps.test-urls.outputs.host-url }}/post'
@@ -747,10 +734,6 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
         id: go-httpbin
@@ -761,7 +744,7 @@ jobs:
 
       # Test Docker integration via GitHub Action (no Docker CLI dependency)
       - name: Test Docker integration via GitHub Action
-        uses: ./
+        uses: $/
         with:
           url: '${{ steps.go-httpbin.outputs.service-url }}/get'
           service_name: 'Docker Integration Test (PR)'
@@ -772,7 +755,7 @@ jobs:
 
       # Test additional Docker integration scenarios via GitHub Action
       - name: Test Docker integration with POST
-        uses: ./
+        uses: $/
         with:
           url: '${{ steps.go-httpbin.outputs.service-url }}/post'
           service_name: 'Docker Integration POST Test (PR)'
@@ -785,7 +768,7 @@ jobs:
 
       # Test Docker integration with custom headers
       - name: Test Docker integration with headers
-        uses: ./
+        uses: $/
         with:
           url: '${{ steps.go-httpbin.outputs.service-url }}/headers'
           service_name: 'Docker Integration Headers Test (PR)'
