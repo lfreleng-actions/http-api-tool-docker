@@ -35,6 +35,14 @@ jobs:
       contents: read  # Reusable scan job checks out the repo
     # yamllint disable-line rule:line-length
     uses: lfreleng-actions/security-workflows/.github/workflows/sonatype-lifecycle.yaml@378fcc19ebdf37f17fde4888d4b71c83b21d6cf3  # v0.9.7
+    # Nexus IQ cannot read pyproject.toml or uv.lock, so have the lane
+    # resolve uv.lock and scan the downloaded artefacts. Python 3.11
+    # matches the python:3.11-slim image and the requires-python floor;
+    # pinning it stops a new Python release without wheels from breaking
+    # resolution.
+    with:
+      build_type: 'python'
+      python_version: '3.11'
     # Neither scan writes a cache; deny writes under branch_protection_rule
     cache-mode: read
     secrets:
