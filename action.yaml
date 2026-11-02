@@ -166,10 +166,20 @@ runs:
     # UVX deployment path (default)
     - name: Install uv for uvx deployment
       if: inputs.deploy == 'uvx'
+      # setup-uv runs the interpreter 'uv python find' returns for its
+      # working directory and reads uv settings (required-version,
+      # cache-dir) there; the default is the caller's workspace. Point it
+      # at this action's own files. The UV_* settings cover an action
+      # loaded from inside the workspace ('uses: ./').
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+      env:
+        UV_NO_CONFIG: "1"
+        UV_SYSTEM_PYTHON: "1"
+        UV_NO_PROJECT: "1"
       with:
         enable-cache: false
         ignore-empty-workdir: true
+        working-directory: ${{ github.action_path }}
 
     - name: Run http-api-tool via uvx
       if: inputs.deploy == 'uvx'

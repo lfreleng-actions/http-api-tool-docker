@@ -655,7 +655,32 @@ jobs:
         env:
           STEPS_GO_HTTPBIN_OUTPUTS_SERVICE_URL: ${{ steps.go-httpbin.outputs.service-url }}
 
+      # setup-uv in the action must neither start an interpreter from the
+      # caller's workspace nor read its uv settings. Each planted
+      # interpreter records that it ran, and the uv.toml's
+      # required-version would fail the action.
+      - name: Plant interpreters and uv settings in the workspace
+        run: |
+          set -euo pipefail
+          marker="$RUNNER_TEMP/planted-ran"
+          stub() {
+            # $0 and $* expand when the stub runs, not here.
+            # shellcheck disable=SC2016
+            printf '#!/bin/sh\necho "%s: $0 $*" >> "%s"\nexit 1\n' \
+              "$1" "$marker" > "$2"
+            chmod +x "$2"
+          }
+          mkdir -p .venv/bin planted
+          printf 'home = /usr/bin\nversion_info = 3.12.0\n' > .venv/pyvenv.cfg
+          stub venv .venv/bin/python3
+          stub venv .venv/bin/python
+          stub python-version planted/python3
+          echo "$GITHUB_WORKSPACE/planted/python3" > .python-version
+          printf '%s\n' 'cache-dir = "/nonexistent/planted-cache"' \
+            'required-version = "==0.0.1"' > uv.toml
+
       - name: Test uvx deployment with host URL
+        id: uvx-get
         uses: $/
         with:
           deploy: 'uvx'
@@ -702,6 +727,87 @@ jobs:
           expected_http_code: 200
           verify_ssl: 'false'
           debug: 'true'
+
+      - name: Check uvx results and that no planted interpreter ran
+        env:
+          HTTP_CODE: ${{ steps.uvx-get.outputs.response_http_code }}
+        run: |
+          set -euo pipefail
+          marker="$RUNNER_TEMP/planted-ran"
+          if [[ -e "$marker" ]]; then
+            echo "::error::A planted workspace interpreter ran:"
+            cat "$marker"
+            exit 1
+          fi
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "::error::Unexpected response_http_code: '$HTTP_CODE'"
+            exit 1
+          fi
+          rm -rf .venv planted .python-version uv.toml
+
+      # The same check with the action checked out inside the workspace
+      # ('uses: ./...'), as a caller that vendors it would. The planted
+      # files sit in the workspace root, the action directory's parent,
+      # where only the step's UV_* settings keep uv from using them.
+      - name: Checkout this action into the workspace
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: 'local-action'
+          persist-credentials: false
+
+      - name: Plant interpreters and uv settings above the action
+        run: |
+          set -euo pipefail
+          marker="$RUNNER_TEMP/planted-ran"
+          stub() {
+            # $0 and $* expand when the stub runs, not here.
+            # shellcheck disable=SC2016
+            printf '#!/bin/sh\necho "%s: $0 $*" >> "%s"\nexit 1\n' \
+              "$1" "$marker" > "$2"
+            chmod +x "$2"
+          }
+          mkdir -p .venv/bin planted
+          printf 'home = /usr/bin\nversion_info = 3.12.0\n' > .venv/pyvenv.cfg
+          stub venv .venv/bin/python3
+          stub venv .venv/bin/python
+          stub python-version planted/python3
+          echo "$GITHUB_WORKSPACE/planted/python3" > .python-version
+          printf '%s\n' 'cache-dir = "/nonexistent/planted-cache"' \
+            'required-version = "==0.0.1"' > uv.toml
+
+      - name: Test uvx deployment from the workspace copy
+        id: uvx-local
+        # The local path is the point of this step: '$/' would download
+        # the action outside the workspace, as the steps above do.
+        uses: ./local-action  # zizmor: ignore[self-repository]
+        with:
+          deploy: 'uvx'
+          url: '${{ steps.test-urls.outputs.host-url }}/get'
+          service_name: 'UVX Local Copy Test'
+          expected_http_code: 200
+          retries: 3
+          initial_sleep_time: 1
+          verify_ssl: 'false'
+          debug: 'true'
+
+      - name: Check the workspace copy and that nothing planted ran
+        env:
+          HTTP_CODE: ${{ steps.uvx-local.outputs.response_http_code }}
+        run: |
+          set -euo pipefail
+          marker="$RUNNER_TEMP/planted-ran"
+          if [[ -e "$marker" ]]; then
+            echo "::error::A planted workspace interpreter ran:"
+            cat "$marker"
+            exit 1
+          fi
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "::error::Unexpected response_http_code: '$HTTP_CODE'"
+            exit 1
+          fi
+          # local-action/ stays: the runner reads its action.yaml again
+          # for the post-job cleanup of a local action.
+          rm -rf .venv planted .python-version uv.toml
 
       - name: Verify both deployment modes work
         run: |
