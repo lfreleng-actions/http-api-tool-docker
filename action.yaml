@@ -13,7 +13,7 @@ inputs:
     required: false
     default: 'uvx'
   python_version:
-    description: 'Python version (Note: uvx manages Python automatically; this input is ignored for deploy=uvx)'
+    description: 'Python version (ignored: deploy=uvx runs on a uv-managed Python 3.13)'
     required: false
     default: '3.11'
   use_local_code:
@@ -164,22 +164,95 @@ runs:
         fi
 
     # UVX deployment path (default)
+    # A composite action inherits the caller job's environment, so no
+    # step below may let a caller variable (PATH, UV_PYTHON, VIRTUAL_ENV,
+    # CONDA_PREFIX, PYTHON* and the like) choose the interpreter it runs.
+    # setup-uv's only uv call for these inputs is "uv python find",
+    # whose result it executes. An invalid preference makes uv refuse
+    # its arguments before any lookup; setup-uv then reports the
+    # Python version as "unknown", which nothing reads.
     - name: Install uv for uvx deployment
       if: inputs.deploy == 'uvx'
-      # setup-uv runs the interpreter 'uv python find' returns for its
-      # working directory and reads uv settings (required-version,
-      # cache-dir) there; the default is the caller's workspace. Point it
-      # at this action's own files. The UV_* settings cover an action
-      # loaded from inside the workspace ('uses: ./').
+      id: setup-uv
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
-      env:
-        UV_NO_CONFIG: "1"
-        UV_SYSTEM_PYTHON: "1"
-        UV_NO_PROJECT: "1"
       with:
+        working-directory: "${{ github.action_path }}"
+        # Without it setup-uv puts the caller's HOME/XDG_* bin dir on PATH
+        tool-bin-dir: "${{ runner.temp }}/http-api-tool-docker/bin"
+        # The post-step "uv cache prune" would hit the invalid preference
         enable-cache: false
-        ignore-empty-workdir: true
-        working-directory: ${{ github.action_path }}
+      env:
+        UV_NO_CONFIG: '1'
+        UV_NO_PROJECT: '1'
+        UV_PYTHON_PREFERENCE: 'lookup-disabled'
+        # Inherited, it makes setup-uv probe uv, which the line above fails
+        UV_PYTHON_ARCH: ''
+        UV_PYTHON_INSTALL_DIR: "${{ runner.temp }}/http-api-tool-docker/python"
+
+    # A trusted interpreter: uv installs its own pinned, hash-checked
+    # build, then the PyPI release of http-api-tool into an environment
+    # on it. uv runs with an empty environment plus an allow-list, so no
+    # caller variable can pick or redirect the interpreter or the
+    # environment uv installs into. It runs from the action's temporary
+    # directory, not the action path: for an action checked out inside
+    # the workspace ('uses: ./...'), "uv python find" would otherwise
+    # probe a .venv in a parent directory.
+    - name: Install Python and http-api-tool for uvx deployment
+      if: inputs.deploy == 'uvx' && inputs.use_local_code != 'true'
+      id: python
+      shell: bash
+      env:
+        UV: "${{ steps.setup-uv.outputs.uv-path }}"
+        WORK_DIR: "${{ runner.temp }}/http-api-tool-docker"
+        INSTALL_DIR: "${{ runner.temp }}/http-api-tool-docker/python"
+        CACHE_DIR: "${{ runner.temp }}/http-api-tool-docker/cache"
+        VENV: "${{ runner.temp }}/http-api-tool-docker/venv"
+        PYTHON_VERSION: '3.13'
+      run: |
+        mkdir -p "$WORK_DIR"
+        cd "$WORK_DIR"
+        clean=(UV_NO_CONFIG=1 UV_NO_PROJECT=1
+          "UV_PYTHON_INSTALL_DIR=$INSTALL_DIR" "UV_CACHE_DIR=$CACHE_DIR")
+        # Network settings, and the package index and authentication
+        # settings uvx honoured before; none of them chooses an
+        # interpreter. The UV_INDEX* names cover UV_INDEX, UV_INDEX_URL,
+        # UV_INDEX_STRATEGY and a named index's UV_INDEX_<NAME>_USERNAME
+        # and UV_INDEX_<NAME>_PASSWORD.
+        for name in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy \
+            https_proxy all_proxy no_proxy SSL_CERT_FILE SSL_CERT_DIR \
+            UV_NATIVE_TLS UV_DEFAULT_INDEX UV_EXTRA_INDEX_URL \
+            UV_KEYRING_PROVIDER UV_INSECURE_HOST UV_HTTP_TIMEOUT \
+            "${!UV_INDEX@}"; do
+          if [ -n "${!name+set}" ]; then clean+=("$name=${!name}"); fi
+        done
+        env -i "${clean[@]}" "$UV" python install --quiet --no-bin \
+          "$PYTHON_VERSION"
+        PYTHON=$(env -i "${clean[@]}" "$UV" python find --managed-python \
+          "$PYTHON_VERSION")
+        case "$PYTHON" in
+          "$INSTALL_DIR"/*) ;;
+          *) echo "Error: uv found Python outside its install directory ❌"
+             exit 1 ;;
+        esac
+        env -i "${clean[@]}" "$UV" venv --no-config --quiet --clear \
+          --python "$PYTHON" "$VENV"
+        # The keyring executable UV_KEYRING_PROVIDER=subprocess runs needs
+        # the caller's PATH, which the action trusts (see the README), and
+        # whatever credential or configuration variables it reads. So this
+        # call alone keeps the caller's environment, less every UV_*
+        # setting outside the allow-list and the variables that point a
+        # Python at other code or another prefix. With an absolute
+        # --python, none of what remains chooses an interpreter.
+        helper=()
+        while IFS= read -r name; do
+          case "$name" in
+            UV_* | PYTHON* | __PYVENV_LAUNCHER__ | VIRTUAL_ENV | CONDA_*) ;;
+            *) helper+=("$name=${!name}") ;;
+          esac
+        done < <(compgen -e)
+        env -i "${helper[@]}" "${clean[@]}" "$UV" pip install --no-config \
+          --quiet --python "$VENV/bin/python" http-api-tool
+        echo "venv-python=$VENV/bin/python" >> "$GITHUB_OUTPUT"
 
     - name: Run http-api-tool via uvx
       if: inputs.deploy == 'uvx'
@@ -213,8 +286,11 @@ runs:
         GITHUB_ACTIONS: 'true'
         GITHUB_OUTPUT: ${{ env.GITHUB_OUTPUT }}
         GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
+        PYTHON: "${{ steps.python.outputs.venv-python }}"
       run: |
         if [[ "$INPUT_USE_LOCAL_CODE" == "true" ]]; then
+          # The documented contract: the caller installed http-api-tool
+          # and chose its interpreter, so it runs as found on PATH.
           if ! command -v http-api-tool &> /dev/null; then
             echo "::error::http-api-tool is not installed." \
               "Please install it first by running 'uv pip install --system -e .'" \
@@ -225,8 +301,13 @@ runs:
           echo "::notice::Using locally installed http-api-tool package"
           http-api-tool
         else
-          echo "::notice::Using http-api-tool from PyPI via uvx"
-          uvx http-api-tool
+          echo "::notice::Using http-api-tool from PyPI via uv"
+          # The environment's own interpreter, isolated (-I): it ignores
+          # PYTHON* variables, the user site and the working directory.
+          # -I does not cover these two: either one replaces the
+          # interpreter's own path, and with it the prefix it loads from.
+          unset PYTHONEXECUTABLE __PYVENV_LAUNCHER__
+          "$PYTHON" -I -m http_api_tool
         fi
 
     # Docker deployment path

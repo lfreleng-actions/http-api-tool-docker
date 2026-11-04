@@ -130,15 +130,36 @@ This is faster and is the recommended method.
     retries: '3'
     initial_sleep_time: '2'
 
-# Explicitly specify uvx with custom Python version
-- name: Test API with uvx and Python 3.12
+# Explicitly specify uvx
+- name: Test API with uvx
   uses: lfreleng-actions/http-api-tool-docker@main
   with:
     deploy: 'uvx'
-    python_version: '3.12'
     url: 'https://api.example.com/health'
     expected_http_code: '200'
 ```
+
+The uvx path runs `http-api-tool` on its own uv-managed Python 3.13,
+installed under `runner.temp`. No caller setting chooses that
+interpreter: the choice ignores `PATH`, `UV_PYTHON`, `VIRTUAL_ENV`,
+`CONDA_PREFIX`, the `PYTHON*` variables and uv settings in the
+workspace. Package index, credential, proxy and certificate settings
+(`UV_INDEX*`, `UV_DEFAULT_INDEX`, `UV_EXTRA_INDEX_URL`,
+`UV_KEYRING_PROVIDER`, `UV_INSECURE_HOST`, `UV_HTTP_TIMEOUT`, the
+`*_PROXY` variables, `SSL_CERT_FILE`, `SSL_CERT_DIR` and
+`UV_NATIVE_TLS`) still reach uv. The package install also sees the
+rest of the caller's environment, `PATH` included, less any other
+`UV_*` setting and the `PYTHON*`, `VIRTUAL_ENV` and `CONDA_*`
+variables, so under `UV_KEYRING_PROVIDER=subprocess` uv finds the
+caller's `keyring` executable and it finds the variables it reads.
+The exception is
+`use_local_code: true`, which runs the `http-api-tool` found on
+`PATH`, so the caller installs it and picks its interpreter.
+
+The action trusts the caller's `PATH`. The runner finds `bash` on it
+for every step, and `setup-uv` runs its helpers from it, so a caller
+that puts a directory from its checkout on `PATH` is outside what a
+composite action can defend against.
 
 #### 2. Docker Deployment (Containerized)
 
@@ -214,7 +235,7 @@ uv run python -m http_api_tool test \
 | Input                   | Description                                                          | Required | Default            |
 | ----------------------- | -------------------------------------------------------------------- | -------- | ------------------ |
 | `deploy`                | Deployment method: `uvx` (fast, default) or `docker` (containerized) | No       | `uvx`              |
-| `python_version`        | Python version to use when deploy=uvx                                | No       | `3.11`             |
+| `python_version`        | Ignored: deploy=uvx runs on a uv-managed Python 3.13                 | No       | `3.11`             |
 | `url`                   | URL of API server/interface to check                                 | Yes      | -                  |
 | `auth_string`           | Authentication string, colon separated username/password             | No       | -                  |
 | `service_name`          | Name of HTTP/HTTPS API service tested                                | No       | `API Service`      |
