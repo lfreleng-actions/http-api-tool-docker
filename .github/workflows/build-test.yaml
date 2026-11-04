@@ -823,6 +823,311 @@ jobs:
         run: |
           docker rm -f go-httpbin || true
 
+  # A composite action inherits the caller job's environment. An earlier
+  # step, such as code from the caller's checkout writing to $GITHUB_ENV,
+  # must not be able to make the uvx path run an interpreter or a module
+  # of its choosing. Each bait records that it ran in a marker file.
+  workspace-isolation:
+    name: 'Workspace Isolation'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+        selector: [request, active-environment]
+    steps:
+      # Harden the runner used by this workflow (Linux only)
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        if: runner.os == 'Linux'
+        with:
+          egress-policy: 'audit'
+
+      # A local endpoint, started before any bait exists, so the test
+      # needs neither Docker (absent on macOS) nor an external service.
+      - name: Start a local HTTP service
+        run: |
+          set -euo pipefail
+          site="$RUNNER_TEMP/isolation-site"
+          mkdir -p "$site"
+          echo 'isolation test' > "$site/index.html"
+          nohup python3 -I -m http.server 8765 --bind 127.0.0.1 \
+            --directory "$site" > "$RUNNER_TEMP/isolation-site.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8765/; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::The local HTTP service did not start"
+          cat "$RUNNER_TEMP/isolation-site.log"
+          exit 1
+
+      - name: Plant interpreters, modules and hostile settings
+        env:
+          SELECTOR: ${{ matrix.selector }}
+        run: |
+          set -euo pipefail
+          marker="$RUNNER_TEMP/isolation-bait-ran"
+          ws="$GITHUB_WORKSPACE"
+          stub() {
+            # $0 and $* expand when the stub runs, not here.
+            # shellcheck disable=SC2016
+            printf '#!/bin/sh\necho "%s: $0 $*" >> "%s"\nexit 1\n' \
+              "$1" "$marker" > "$2"
+            chmod +x "$2"
+          }
+          module() {
+            printf 'open(%s, "a").write("import %s\\n")\n' \
+              "'$marker'" "$1" > "$2"
+          }
+          mkdir -p "$ws/.venv/bin" "$ws/.venv/conda-meta" "$ws/xdg-bin"
+          for name in python python3 python3.13 uv; do
+            stub venv "$ws/.venv/bin/$name"
+          done
+          printf 'home = /usr/bin\nversion_info = 3.13.0\n' \
+            > "$ws/.venv/pyvenv.cfg"
+          stub xdg-bin "$ws/xdg-bin/env"
+          stub xdg-bin "$ws/xdg-bin/bash"
+          for dir in "$ws" "$ws/pkg"; do
+            mkdir -p "$dir/urllib"
+            for name in json base64 sitecustomize usercustomize; do
+              module "$name" "$dir/$name.py"
+            done
+            module urllib "$dir/urllib/__init__.py"
+          done
+
+          case "$(uname -m)" in
+            arm64|aarch64) arch=aarch64 ;;
+            *) arch=x86_64 ;;
+          esac
+          # The control step below runs this interpreter against the bait
+          echo "CONTROL_PYTHON=$(command -v python3)" >> "$GITHUB_ENV"
+          # The runner puts $GITHUB_PATH entries ahead of PATH, as a
+          # caller's earlier step would
+          echo "$ws/.venv/bin" >> "$GITHUB_PATH"
+          {
+            echo "PYTHONPATH=pkg:."
+            echo "PYTHONHOME=$ws/.venv"
+            echo "PYTHONUSERBASE=$ws"
+            echo "PYTHONSTARTUP=$ws/json.py"
+            echo "PYTHONEXECUTABLE=$ws/.venv/bin/python3"
+            echo "__PYVENV_LAUNCHER__=$ws/.venv/bin/python3"
+            echo "UV_NO_CACHE=1"
+            echo "UV_PYTHON_ARCH=$arch"
+            echo "UV_PYTHON_INSTALL_MIRROR=https://127.0.0.1:9"
+            echo "XDG_BIN_HOME=$ws/xdg-bin"
+            if [ "$SELECTOR" = request ]; then
+              echo "UV_PYTHON=$ws/.venv/bin/python3"
+              echo "UV_PYTHON_SEARCH_PATH=$ws/.venv/bin"
+              echo "UV_PYTHON_INSTALL_DIR=$ws/.uv-python"
+              echo "UV_PYTHON_PREFERENCE=only-system"
+            else
+              # UV_PYTHON stays unset: it would mask this discovery
+              echo "VIRTUAL_ENV=$ws/.venv"
+              echo "CONDA_PREFIX=$ws/.venv"
+              echo "CONDA_DEFAULT_ENV=base"
+              echo "UV_INTERNAL__PARENT_INTERPRETER=$ws/.venv/bin/python3"
+              echo "UV_INTERNAL__TEST_PYTHON_MANAGED=1"
+              echo "UV_CACHE_DIR=$ws/.uv-cache"
+            fi
+          } >> "$GITHUB_ENV"
+
+      # Proves the bait is live: a Python start that is not isolated
+      # runs the planted interpreter, or imports the planted modules.
+      - name: Control (the bait runs without isolation)
+        run: |
+          set -uo pipefail
+          marker="$RUNNER_TEMP/isolation-bait-ran"
+          python3 -c 'pass' || true
+          env -u PYTHONHOME -u PYTHONEXECUTABLE -u __PYVENV_LAUNCHER__ \
+            "$CONTROL_PYTHON" -c 'import json' || true
+          if ! grep -q '^venv: ' "$marker" 2>/dev/null \
+            || ! grep -q '^import json$' "$marker"; then
+            echo "::error::The bait did not run; the test proves nothing"
+            cat "$marker" 2>/dev/null || true
+            exit 1
+          fi
+          rm -f "$marker"
+
+      - name: Run the action (cold)
+        id: run-cold
+        uses: $/
+        with:
+          url: 'http://127.0.0.1:8765/'
+          service_name: 'Isolation Test (cold)'
+          expected_http_code: 200
+          retries: 3
+
+      - name: Run the action (warm)
+        id: run-warm
+        uses: $/
+        with:
+          url: 'http://127.0.0.1:8765/'
+          service_name: 'Isolation Test (warm)'
+          expected_http_code: 200
+          retries: 3
+
+      - name: Check that no bait ran and both runs produced outputs
+        env:
+          COLD_CODE: ${{ steps.run-cold.outputs.response_http_code }}
+          WARM_CODE: ${{ steps.run-warm.outputs.response_http_code }}
+          COLD_TIME: ${{ steps.run-cold.outputs.total_time }}
+          WARM_TIME: ${{ steps.run-warm.outputs.total_time }}
+        run: |
+          set -euo pipefail
+          marker="$RUNNER_TEMP/isolation-bait-ran"
+          failed=false
+          if [[ -e "$marker" ]]; then
+            echo "::error::Planted bait ran:"
+            cat "$marker"
+            failed=true
+          fi
+          case ":$PATH:" in
+            *":$GITHUB_WORKSPACE/xdg-bin:"*)
+              echo "::error::The caller's XDG_BIN_HOME was put on PATH"
+              failed=true ;;
+          esac
+          for run in "cold:$COLD_CODE:$COLD_TIME" "warm:$WARM_CODE:$WARM_TIME"; do
+            IFS=: read -r name code time <<< "$run"
+            if [[ "$code" != "200" || -z "$time" ]]; then
+              echo "::error::The $name run gave response_http_code" \
+                "'$code' and total_time '$time'"
+              failed=true
+            fi
+          done
+          [[ "$failed" == false ]]
+
+  # The uvx path runs uv under env -i with an allow-list. A caller's
+  # named private index has to keep its credentials: uv must send the
+  # UV_INDEX_<NAME>_USERNAME and _PASSWORD the caller set ("env" leg),
+  # or the password a keyring executable on the caller's PATH returns
+  # under UV_KEYRING_PROVIDER=subprocess from a variable the caller
+  # exported ("keyring" leg).
+  private-index-credentials:
+    name: 'Private Index Credentials (${{ matrix.source }})'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [env, keyring]
+    steps:
+      # Harden the runner used by this workflow
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          egress-policy: 'audit'
+
+      # A local index that demands Basic authentication, records what it
+      # receives, then answers 404 so uv falls through to PyPI. Its
+      # /health path is the endpoint the action checks.
+      - name: Start a local private index
+        run: |
+          set -euo pipefail
+          server="$RUNNER_TEMP/private-index.py"
+          cat > "$server" <<'EOF'
+          import http.server
+          import sys
+
+          LOG = sys.argv[1]
+
+
+          class Index(http.server.BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == "/health":
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b"ok\n")
+                      return
+                  auth = self.headers.get("Authorization")
+                  with open(LOG, "a") as log:
+                      log.write(f"{self.path} {auth}\n")
+                  if auth is None:
+                      self.send_response(401)
+                      self.send_header("WWW-Authenticate", 'Basic realm="private"')
+                  else:
+                      self.send_response(404)
+                  self.end_headers()
+
+
+          http.server.HTTPServer(("127.0.0.1", 8766), Index).serve_forever()
+          EOF
+          nohup python3 -I "$server" "$RUNNER_TEMP/private-index-requests" \
+            > "$RUNNER_TEMP/private-index.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8766/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::The local private index did not start"
+          cat "$RUNNER_TEMP/private-index.log"
+          exit 1
+
+      - name: Configure a named private index, as a caller would
+        env:
+          SOURCE: ${{ matrix.source }}
+        run: |
+          set -euo pipefail
+          {
+            echo "UV_INDEX=private=http://127.0.0.1:8766/simple"
+            echo "UV_INDEX_PRIVATE_USERNAME=caller"
+          } >> "$GITHUB_ENV"
+          if [[ "$SOURCE" == "env" ]]; then
+            echo "UV_INDEX_PRIVATE_PASSWORD=private-index-test" \
+              >> "$GITHUB_ENV"
+            exit 0
+          fi
+          # A keyring executable outside the system search path, which
+          # uv finds only on the caller's PATH. Like a real helper, it
+          # reads its secret from a variable the caller exported.
+          bin="$RUNNER_TEMP/keyring-bin"
+          mkdir -p "$bin"
+          cat > "$bin/keyring" <<'EOF'
+          #!/bin/sh
+          echo "$*" >> "$RUNNER_TEMP/keyring-calls"
+          if [ "$1" = get ]; then echo "$INDEX_AUTH_TOKEN"; fi
+          EOF
+          chmod +x "$bin/keyring"
+          echo "$bin" >> "$GITHUB_PATH"
+          {
+            echo "UV_KEYRING_PROVIDER=subprocess"
+            echo "INDEX_AUTH_TOKEN=private-index-test"
+          } >> "$GITHUB_ENV"
+
+      - name: Run the action
+        id: run
+        uses: $/
+        with:
+          url: 'http://127.0.0.1:8766/health'
+          service_name: 'Private Index Test'
+          expected_http_code: 200
+          retries: 3
+
+      - name: Check that uv sent the caller's credentials
+        env:
+          HTTP_CODE: ${{ steps.run.outputs.response_http_code }}
+          SOURCE: ${{ matrix.source }}
+        run: |
+          set -euo pipefail
+          requests="$RUNNER_TEMP/private-index-requests"
+          expected="Basic $(printf '%s' 'caller:private-index-test' | base64)"
+          echo "Requests the private index received:"
+          cat "$requests" 2>/dev/null || true
+          if ! grep -qF " $expected" "$requests" 2>/dev/null; then
+            echo "::error::uv did not send the caller's private index" \
+              "password (source: $SOURCE)"
+            exit 1
+          fi
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "::error::Unexpected response_http_code: '$HTTP_CODE'"
+            exit 1
+          fi
+
   # Docker integration test for PRs (using GitHub Action instead of Docker CLI)
   docker-integration-test-pr:
     name: 'Docker Integration Test (PR)'
