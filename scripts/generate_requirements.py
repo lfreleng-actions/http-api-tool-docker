@@ -16,7 +16,7 @@ Usage:
 
 Examples:
     python3 scripts/generate_requirements_with_hashes.py safety==3.6.0 bandit==1.8.3
-    python3 scripts/generate_requirements_with_hashes.py --platform linux_x86_64 --python-version 310 safety==3.6.0
+    python3 scripts/generate_requirements_with_hashes.py --platform linux_x86_64 --python-version 311 safety==3.6.0
     python3 scripts/generate_requirements_with_hashes.py --output /tmp/security-requirements.txt safety==3.6.0 bandit==1.8.3 pip-audit==2.7.3
 """
 
@@ -189,8 +189,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--python-version",
-        default="310",
-        help="Python version to target (default: 310)",
+        default="311",
+        help="Python version to target (default: 311)",
     )
     parser.add_argument("--output", "-o", help="Output file path (default: stdout)")
     parser.add_argument(
