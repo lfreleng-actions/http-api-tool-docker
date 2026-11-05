@@ -4,16 +4,12 @@
 
 name: 'Build/Test and Publish Docker Image'
 
+# yamllint disable-line rule:truthy
 on:
   workflow_dispatch:
     inputs:
       bust_cache:
         description: 'Bust Docker build cache (forces fresh build)'
-        required: false
-        type: boolean
-        default: false
-      purge_all_caches:
-        description: 'Purge ALL GitHub Actions caches for this repository'
         required: false
         type: boolean
         default: false
@@ -31,105 +27,81 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  # yamllint disable-line rule:line-length
+  HARDEN_RUNNER_ALLOWLIST: 'lfreleng-actions//.github/harden-runner/lfreleng-actions/allow_list.txt@6d4a65c5601afd6c2fbe52bda4b0024b132f265d'  # v0.19.0
 
 jobs:
-  # Purge all caches if requested via workflow_dispatch
-  purge-caches:
-    name: "Purge All Caches"
-    if: github.event_name == 'workflow_dispatch' && inputs.purge_all_caches == true
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      actions: write  # Purge GitHub Actions caches via the API
-    steps:
-      - name: Purge all GitHub Actions caches
-        run: |
-          echo "🗑️ Purging all GitHub Actions caches for this repository..."
-
-          # Get all cache keys using GitHub API
-          REPO="$REPOSITORY"
-
-          echo "Fetching cache list..."
-          gh api -X GET "/repos/$REPO/actions/caches" --paginate | \
-            jq -r '.actions_caches[].id' | \
-            while read -r cache_id; do
-              echo "Deleting cache ID: $cache_id"
-              gh api -X DELETE "/repos/$REPO/actions/caches/$cache_id" || true
-            done
-
-          echo "✅ All caches purged successfully"
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-
-  # Build Docker image with comprehensive caching
-  docker-build:
-    needs: [python-build]
-    name: "Build Docker Image"
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  # Python build, tests, dependency audit, SBOM and Grype scan come
+  # from the python-workflows family
+  python-build-test:
+    name: 'Python Build/Test'
     permissions:
       contents: read
-    outputs:
-      image-tag: ${{ steps.build.outputs.imageid }}
+      pull-requests: read  # repository-metadata-action queries PR data
+    # yamllint disable-line rule:line-length
+    uses: lfreleng-actions/python-workflows/.github/workflows/build-test.yaml@e6e1ea99f84dc0993a14759c749555268a393cab  # v0.6.0
+    with:
+      # Grype policy: findings block only when the change touched a
+      # dependency file; gate on fixable findings in declared
+      # dependencies from medium up and on critical transitive ones
+      grype_gate_when: 'dependencies-changed'
+      grype_only_fixed: true
+      grype_dependency_policy: 'declared'
+      grype_transitive_fail_on: 'critical'
+      # The NO_BLOCK_AUDIT_FAIL repository variable lets the lane pass
+      # a failing dependency audit, as on the release lane
+      audit_permit_fail: ${{ vars.NO_BLOCK_AUDIT_FAIL == 'true' }}
 
-    steps:
-      # Harden the runner
-      - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
-        with:
-          egress-policy: audit
-
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # Set up Docker Buildx with caching
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      # Build Docker image with registry cache
-      - name: Build Docker image
-        id: build
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: ./docker/Containerfile
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: http-api-tool:test
-          build-args: |
-            VERSION=0.0.0.dev0
-          # yamllint disable rule:line-length
-          cache-from: |
-            ${{ github.event_name == 'workflow_dispatch' && inputs.bust_cache == true && 'type=gha,scope=docker-build-never-exists' || 'type=gha,scope=docker-build' }}
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-base
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-deps
-          # yamllint enable rule:line-length
-          cache-to: type=gha,mode=max,scope=docker-build
-          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.bust_cache == true }}
-          labels: |
-            org.opencontainers.image.title=HTTP API Tool
-            org.opencontainers.image.description=A Python HTTP/HTTPS API testing tool
-            org.opencontainers.image.vendor=The Linux Foundation
-
-      # Test basic image functionality
-      - name: Test Docker image help
-        run: |
-          docker run --rm http-api-tool:test --help
+  # Container build, smoke test, hadolint, image SBOM and Grype scan
+  # come from the docker-workflows family. The image list is explicit
+  # because discovery looks for a Dockerfile, not docker/Containerfile.
+  docker-build-test:
+    name: 'Docker Build/Test'
+    permissions:
+      contents: read
+      pull-requests: read  # repository-metadata-action queries PR data
+    # yamllint disable-line rule:line-length
+    uses: lfreleng-actions/docker-workflows/.github/workflows/build-test.yaml@0a748986df8f93fd610655ee4ffe357cf6d06c4a  # v0.11.3
+    with:
+      # yamllint disable-line rule:line-length
+      images: '[{"name": "http-api-tool-docker", "context": ".", "dockerfile": "docker/Containerfile", "build_args": ["VERSION=0.0.0.dev0"]}]'
+      test_command: 'docker run --rm http-api-tool-docker:verify --help'
+      # docker-workflows v0.11.3 has no only-fixed or dependency-policy
+      # inputs, and the Debian base image always carries unfixed
+      # findings, so the image scan reports rather than gates until a
+      # release with the Grype policy inputs ships
+      grype_fail_on: 'critical'
+      grype_permit_fail: true
+      # Both family calls run in parallel and share the Grype database
+      # cache prefix, whose keys rotate on the database build time, so
+      # one job at most may save it. The Python call has no cache mode
+      # input and always saves; this call restores without saving.
+      grype_cache_db: 'restore-only'
 
   # Integration tests
   integration-tests:
     name: "Integration Tests"
     runs-on: ubuntu-latest
-    needs: docker-build
     timeout-minutes: 15
     permissions:
       contents: read
 
     steps:
+      - name: 'Load egress allow-list (block mode)'
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/harden-runner-block-action@bd83615a22b57835798adcb9ce753161464dfb40  # v0.16.2
+        with:
+          config: ${{ env.HARDEN_RUNNER_ALLOWLIST }}
+          allow_list_summary: 'false'
+
+      - name: 'Harden runner (block)'
+        # yamllint disable-line rule:line-length
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          egress-policy: 'block'
+          allowed-endpoints: >
+            ${{ env.CONNECTION_ALLOW_LIST }}
+
       # Set up go-httpbin for testing
       - name: Setup go-httpbin HTTPS service
         uses: lfreleng-actions/go-httpbin-action@692bf3b759b746041e9cc2eebec5a6006e6d6041  # v0.1.7
@@ -189,11 +161,12 @@ jobs:
 
       # Clean up is handled automatically by the go-httpbin action
 
-  # Publish to GHCR (only after successful tests)
+  # Publish to GHCR only after the Python build, tests, audit and Grype
+  # gates, the image build and the integration tests all pass
   docker-publish:
     name: "Publish to GHCR"
     runs-on: ubuntu-latest
-    needs: [docker-build, integration-tests]
+    needs: [python-build-test, docker-build-test, integration-tests]
     if: github.event_name != 'pull_request'
     timeout-minutes: 10
     permissions:
@@ -201,11 +174,20 @@ jobs:
       packages: write  # Push container images to GHCR
 
     steps:
-      # Harden the runner
-      - name: Harden Runner
+      - name: 'Load egress allow-list (block mode)'
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/harden-runner-block-action@bd83615a22b57835798adcb9ce753161464dfb40  # v0.16.2
+        with:
+          config: ${{ env.HARDEN_RUNNER_ALLOWLIST }}
+          allow_list_summary: 'false'
+
+      - name: 'Harden runner (block)'
+        # yamllint disable-line rule:line-length
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
         with:
-          egress-policy: audit
+          egress-policy: 'block'
+          allowed-endpoints: >
+            ${{ env.CONNECTION_ALLOW_LIST }}
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -270,203 +252,42 @@ jobs:
         env:
           STEPS_META_OUTPUTS_TAGS: ${{ steps.meta.outputs.tags }}
 
-  # Python build for additional testing (runs in parallel with container pipeline)
-  python-build:
-    name: 'Python Build'
-    runs-on: 'ubuntu-latest'
-    outputs:
-      matrix_json: "${{ steps.python-build.outputs.matrix_json }}"
-      artefact_name: "${{ steps.python-build.outputs.artefact_name }}"
-      artefact_path: "${{ steps.python-build.outputs.artefact_path }}"
-    permissions:
-      contents: read
-    timeout-minutes: 12
-    env:
-      GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-    steps:
-      # Harden the runner used by this workflow
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
-        with:
-          egress-policy: 'audit'
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # Setup Python with enhanced caching
-      - name: Set up Python
-        id: setup-python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
-        with:
-          # Do NOT use hard coded Python; extract from pyproject.toml
-          python-version-file: 'pyproject.toml'
-          cache: 'pip'
-          cache-dependency-path: pyproject.toml
-
-      # Cache UV dependencies
-      - name: Cache UV dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/uv
-            .venv
-          # yamllint disable-line rule:line-length
-          key: uv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
-          restore-keys: |
-            uv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-
-            uv-${{ runner.os }}-
-
-      - name: 'Build Python project'
-        id: python-build
-        # yamllint disable-line rule:line-length
-        uses: lfreleng-actions/python-build-action@3cdb6f8e3b9c6c8fb21cce123f7b873b3620273d # v2.1.1
-
-  # Python tests with matrix strategy (after container pipeline)
-  python-tests:
-    name: 'Python Tests'
-    runs-on: 'ubuntu-latest'
-    needs: [integration-tests, python-build]
-    # Matrix job
-    strategy:
-      fail-fast: false
-      matrix: "${{ fromJson(needs.python-build.outputs.matrix_json) }}"
-    permissions:
-      contents: read
-    timeout-minutes: 12
-    steps:
-      # Harden the runner used by this workflow
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # Setup Python with comprehensive caching
-      - name: Set up Python
-        id: setup-python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
-
-      # Cache UV test dependencies
-      - name: Cache UV test dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/uv
-            .venv
-          # yamllint disable-line rule:line-length
-          key: uv-test-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
-          restore-keys: |
-            uv-test-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-
-            uv-test-${{ runner.os }}-
-
-      - name: "Python tests [pytest] ${{ matrix.python-version }}"
-        # yamllint disable-line rule:line-length
-        uses: lfreleng-actions/python-test-action@0c2fe7546faea2321e003c1c3b26a9156a7bc432 # v1.3.1
-        with:
-          python_version: ${{ matrix.python-version }}
-
-  # Python dependency auditing (after container pipeline)
-  python-audit:
-    name: 'Python Audit'
-    runs-on: 'ubuntu-latest'
-    needs: [integration-tests, python-build]
-    # Matrix job
-    strategy:
-      fail-fast: false
-      matrix: "${{ fromJson(needs.python-build.outputs.matrix_json) }}"
-    permissions:
-      contents: read
-    timeout-minutes: 10
-    steps:
-      # Harden the runner used by this workflow
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
-        with:
-          egress-policy: 'audit'
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # Setup Python with comprehensive caching
-      - name: Set up Python
-        id: setup-python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
-
-      # Cache UV audit dependencies
-      - name: Cache UV audit dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/uv
-            .venv
-          # yamllint disable-line rule:line-length
-          key: uv-audit-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
-          restore-keys: |
-            uv-audit-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-
-            uv-audit-${{ runner.os }}-
-
-      - name: "Audit dependencies ${{ matrix.python-version }}"
-        # yamllint disable-line rule:line-length
-        uses: lfreleng-actions/python-audit-action@47af793a2a28882b10ceb9109646cbbcecc2e7b0 # v0.6.1
-        with:
-          python_version: "${{ matrix.python-version }}"
-
-
   # CLI integration tests (after container pipeline)
   cli-tests:
     name: 'CLI Integration Tests'
     runs-on: ubuntu-latest
-    needs: [integration-tests, python-build]
+    needs: [integration-tests]
     permissions:
       contents: read
     timeout-minutes: 15
     steps:
-      # Harden the runner used by this workflow
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+      - name: 'Load egress allow-list (block mode)'
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/harden-runner-block-action@bd83615a22b57835798adcb9ce753161464dfb40  # v0.16.2
         with:
-          egress-policy: 'audit'
+          config: ${{ env.HARDEN_RUNNER_ALLOWLIST }}
+          allow_list_summary: 'false'
+
+      - name: 'Harden runner (block)'
+        # yamllint disable-line rule:line-length
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          egress-policy: 'block'
+          allowed-endpoints: >
+            ${{ env.CONNECTION_ALLOW_LIST }}
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # Setup Python with comprehensive caching
-      - name: Set up Python
-        id: setup-python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
-        with:
-          python-version-file: 'pyproject.toml'
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
-
-      # Cache UV CLI dependencies
-      - name: Cache UV CLI dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/uv
-            .venv
-          # yamllint disable-line rule:line-length
-          key: uv-cli-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
-          restore-keys: |
-            uv-cli-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-
-            uv-cli-${{ runner.os }}-
-
       - name: Install UV
+        # yamllint disable-line rule:line-length
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
 
       - name: Install project dependencies
         run: |
@@ -560,10 +381,20 @@ jobs:
       contents: read
     timeout-minutes: 10
     steps:
-      # Harden the runner used by this workflow
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+      - name: 'Load egress allow-list (block mode)'
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/harden-runner-block-action@bd83615a22b57835798adcb9ce753161464dfb40  # v0.16.2
         with:
-          egress-policy: 'audit'
+          config: ${{ env.HARDEN_RUNNER_ALLOWLIST }}
+          allow_list_summary: 'false'
+
+      - name: 'Harden runner (block)'
+        # yamllint disable-line rule:line-length
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          egress-policy: 'block'
+          allowed-endpoints: >
+            ${{ env.CONNECTION_ALLOW_LIST }}
 
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
@@ -617,10 +448,20 @@ jobs:
       contents: read
     timeout-minutes: 10
     steps:
-      # Harden the runner used by this workflow
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+      - name: 'Load egress allow-list (block mode)'
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/harden-runner-block-action@bd83615a22b57835798adcb9ce753161464dfb40  # v0.16.2
         with:
-          egress-policy: 'audit'
+          config: ${{ env.HARDEN_RUNNER_ALLOWLIST }}
+          allow_list_summary: 'false'
+
+      - name: 'Harden runner (block)'
+        # yamllint disable-line rule:line-length
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          egress-policy: 'block'
+          allowed-endpoints: >
+            ${{ env.CONNECTION_ALLOW_LIST }}
 
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
@@ -839,11 +680,22 @@ jobs:
         os: [ubuntu-24.04, macos-15]
         selector: [request, active-environment]
     steps:
-      # Harden the runner used by this workflow (Linux only)
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+      - name: 'Load egress allow-list (block mode)'
         if: runner.os == 'Linux'
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/harden-runner-block-action@bd83615a22b57835798adcb9ce753161464dfb40  # v0.16.2
         with:
-          egress-policy: 'audit'
+          config: ${{ env.HARDEN_RUNNER_ALLOWLIST }}
+          allow_list_summary: 'false'
+
+      - name: 'Harden runner (block)'
+        if: runner.os == 'Linux'
+        # yamllint disable-line rule:line-length
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          egress-policy: 'block'
+          allowed-endpoints: >
+            ${{ env.CONNECTION_ALLOW_LIST }}
 
       # A local endpoint, started before any bait exists, so the test
       # needs neither Docker (absent on macOS) nor an external service.
@@ -1017,10 +869,20 @@ jobs:
       matrix:
         source: [env, keyring]
     steps:
-      # Harden the runner used by this workflow
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+      - name: 'Load egress allow-list (block mode)'
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/harden-runner-block-action@bd83615a22b57835798adcb9ce753161464dfb40  # v0.16.2
         with:
-          egress-policy: 'audit'
+          config: ${{ env.HARDEN_RUNNER_ALLOWLIST }}
+          allow_list_summary: 'false'
+
+      - name: 'Harden runner (block)'
+        # yamllint disable-line rule:line-length
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          egress-policy: 'block'
+          allowed-endpoints: >
+            ${{ env.CONNECTION_ALLOW_LIST }}
 
       # A local index that demands Basic authentication, records what it
       # receives, then answers 404 so uv falls through to PyPI. Its
@@ -1132,18 +994,27 @@ jobs:
   docker-integration-test-pr:
     name: 'Docker Integration Test (PR)'
     runs-on: ubuntu-latest
-    needs: [integration-tests, python-tests, python-audit, cli-tests, action-tests]
+    needs: [integration-tests, python-build-test, cli-tests, action-tests]
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
     timeout-minutes: 15
 
     steps:
-      # Harden the runner used by this workflow
-      - name: Harden Runner
+      - name: 'Load egress allow-list (block mode)'
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/harden-runner-block-action@bd83615a22b57835798adcb9ce753161464dfb40  # v0.16.2
+        with:
+          config: ${{ env.HARDEN_RUNNER_ALLOWLIST }}
+          allow_list_summary: 'false'
+
+      - name: 'Harden runner (block)'
+        # yamllint disable-line rule:line-length
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
         with:
-          egress-policy: audit
+          egress-policy: 'block'
+          allowed-endpoints: >
+            ${{ env.CONNECTION_ALLOW_LIST }}
 
       # Start go-httpbin service for testing
       - name: Setup go-httpbin service
@@ -1198,7 +1069,7 @@ jobs:
   docker-integration-test:
     name: 'Docker Integration Test'
     runs-on: ubuntu-latest
-    needs: [docker-publish, python-tests, python-audit, cli-tests, action-tests]
+    needs: [docker-publish, python-build-test, cli-tests, action-tests]
     if: github.event_name != 'pull_request'
     permissions:
       contents: read
@@ -1206,11 +1077,20 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      # Harden the runner used by this workflow
-      - name: Harden Runner
+      - name: 'Load egress allow-list (block mode)'
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/harden-runner-block-action@bd83615a22b57835798adcb9ce753161464dfb40  # v0.16.2
+        with:
+          config: ${{ env.HARDEN_RUNNER_ALLOWLIST }}
+          allow_list_summary: 'false'
+
+      - name: 'Harden runner (block)'
+        # yamllint disable-line rule:line-length
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
         with:
-          egress-policy: audit
+          egress-policy: 'block'
+          allowed-endpoints: >
+            ${{ env.CONNECTION_ALLOW_LIST }}
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1272,51 +1152,43 @@ jobs:
         run: |
           docker rm -f go-httpbin || true
 
-  # Security scan job
+  # Static analysis the family does not run: bandit over the sources
+  # and this repository's pip hash-pinning check
   security-scan:
     name: 'Security Scan'
     runs-on: ubuntu-latest
-    needs: [python-build]
     permissions:
       contents: read
     timeout-minutes: 10
     steps:
-      # Harden the runner
-      - name: Harden Runner
+      - name: 'Load egress allow-list (block mode)'
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/harden-runner-block-action@bd83615a22b57835798adcb9ce753161464dfb40  # v0.16.2
+        with:
+          config: ${{ env.HARDEN_RUNNER_ALLOWLIST }}
+          allow_list_summary: 'false'
+
+      - name: 'Harden runner (block)'
+        # yamllint disable-line rule:line-length
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
         with:
-          egress-policy: audit
+          egress-policy: 'block'
+          allowed-endpoints: >
+            ${{ env.CONNECTION_ALLOW_LIST }}
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # Setup Python with caching
-      - name: Set up Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
-        with:
-          # Do NOT use hard coded Python; extract from pyproject.toml
-          python-version-file: 'pyproject.toml'
-          cache: 'pip'
-          cache-dependency-path: pyproject.toml
-
-      # Cache UV dependencies
-      - name: Cache UV dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ./.venv
-            ~/.cache/pip
-            ~/.cache/uv
-          key: ${{ runner.os }}-security-scan-deps-${{ hashFiles('**/pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-security-scan-deps-
-            ${{ runner.os }}-security-scan-
-
-      # Install UV
       - name: Install UV
+        # yamllint disable-line rule:line-length
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
 
       # Install project dependencies with dev extras (includes bandit)
       - name: Install project dependencies
