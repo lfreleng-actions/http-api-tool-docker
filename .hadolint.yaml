@@ -1,0 +1,16 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Linux Foundation
+
+# Read by the docker-workflows dockerfile-lint job, which runs hadolint
+# from the repository root against docker/Containerfile.
+ignored:
+  # Debian package pins rot faster than the digest-pinned base image;
+  # the image tracks the base image's security updates instead
+  - DL3008
+  # The one pipe is `echo <sum> | sha256sum -c -`, which fails on a
+  # mismatch by itself
+  - DL4006
+  # `uv lock` and `uv sync` stay in separate layers so the dependency
+  # layer caches independently of the lock step
+  - DL3059

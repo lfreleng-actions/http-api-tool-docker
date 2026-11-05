@@ -27,7 +27,7 @@ GitHub Container Registry on every release:
 docker pull ghcr.io/lfreleng-actions/http-api-tool-docker:latest
 
 # Pull a specific version
-docker pull ghcr.io/lfreleng-actions/http-api-tool-docker:v0.2.0
+docker pull ghcr.io/lfreleng-actions/http-api-tool-docker:0.2.0
 
 # Use directly in commands
 docker run --rm ghcr.io/lfreleng-actions/http-api-tool-docker:latest test \
@@ -38,7 +38,7 @@ docker run --rm ghcr.io/lfreleng-actions/http-api-tool-docker:latest test \
 **Available Tags:**
 
 - `latest` - Most recent release
-- `vX.Y.Z` - Specific version (e.g., `v0.2.0`)
+- `X.Y.Z` - Specific version (e.g., `0.2.0`, from the `v0.2.0` release)
 - `X.Y` - Minor version (e.g., `0.2`)
 - `X` - Major version (e.g., `0`)
 
@@ -402,10 +402,47 @@ The test suite validates:
 - Retry logic with backoff
 - HTTPS with SSL/TLS certificate validation
 
-**CI/CD Integration**: The integration test suite runs automatically in GitHub
-Actions after every PyPI release using the `go-httpbin-action` for reliable,
-self-hosted testing. This ensures the published package version matches the git
-tag and all features work as expected.
+### Continuous Integration
+
+The GitHub Actions workflows call the organisation's reusable workflow
+families for the generic stages; the jobs they define themselves are the
+ones specific to this tool.
+
+`build-test.yaml` runs on pull requests and pushes to `main`:
+
+- [python-workflows `build-test.yaml`][python-workflows]: Python build,
+  tests, dependency audit, SBOM and Grype scan. The Grype gate arms when
+  the change touched a dependency file (`grype_gate_when:
+  dependencies-changed`) and fails on fixable findings in declared
+  dependencies from medium up and on critical findings in transitive ones.
+  Setting the `NO_BLOCK_AUDIT_FAIL` repository variable to `true` lets a
+  failing dependency audit report without blocking, on both workflows.
+- [docker-workflows `build-test.yaml`][docker-workflows]: container build
+  from `docker/Containerfile`, a `--help` smoke test, hadolint (configured
+  in `.hadolint.yaml`), image SBOM and Grype scan. The two family calls
+  run in parallel, so this one sets `grype_cache_db` to restore the Grype
+  database cache without saving it, leaving the Python call as the single
+  writer.
+- Tool-specific jobs: action integration tests against `go-httpbin`, CLI
+  tests, deployment-mode tests (uvx and Docker), workspace isolation and
+  private index credential checks for the uvx path, Docker integration
+  tests, bandit static analysis, and the GHCR publish of `latest` on
+  pushes to `main`.
+
+`build-test-release.yaml` runs on tag pushes:
+
+- [python-workflows `build-test-release.yaml`][python-workflows]: tag
+  validation, signed and attested build, tests, audit, SBOM, Grype scan,
+  artefact attachment and GitHub release promotion.
+- Test PyPI and PyPI publishing, then the multi-architecture image push to
+  GHCR with the `X.Y.Z`, `X.Y`, `X` and `latest` tags; the image tags omit
+  the release tag's leading `v`, so release `v1.2.3` publishes `1.2.3`.
+
+Every custom job loads the organisation egress allow-list through
+`harden-runner-block-action` and runs `harden-runner` in block mode.
+
+[python-workflows]: https://github.com/lfreleng-actions/python-workflows
+[docker-workflows]: https://github.com/lfreleng-actions/docker-workflows
 
 ### Pre-commit Hooks
 
