@@ -39,7 +39,7 @@ jobs:
       id-token: write       # OIDC for build provenance attestations
       attestations: write   # Build provenance attestations
     # yamllint disable-line rule:line-length
-    uses: lfreleng-actions/python-workflows/.github/workflows/build-test-release.yaml@e6e1ea99f84dc0993a14759c749555268a393cab  # v0.6.0
+    uses: lfreleng-actions/python-workflows/.github/workflows/build-test-release.yaml@d9336718eea42197699c233134f3b34a69520012  # v0.7.0
     with:
       # Grype policy: gate on fixable findings in declared dependencies
       # from medium up, and on critical findings in transitive ones

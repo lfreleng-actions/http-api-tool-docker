@@ -419,7 +419,11 @@ ones specific to this tool.
   failing dependency audit report without blocking, on both workflows.
 - [docker-workflows `build-test.yaml`][docker-workflows]: container build
   from `docker/Containerfile`, a `--help` smoke test, hadolint (configured
-  in `.hadolint.yaml`), image SBOM and Grype scan. The two family calls
+  in `.hadolint.yaml`), image SBOM and Grype scan. The Grype gate arms
+  when the change touched `docker/Containerfile` or a Python dependency
+  file such as `pyproject.toml` or `uv.lock`, and fails on fixable
+  critical findings in any image package; the Debian base image's
+  findings with no published fix report as warnings. The two family calls
   run in parallel, so this one sets `grype_cache_db` to restore the Grype
   database cache without saving it, leaving the Python call as the single
   writer.
