@@ -39,7 +39,7 @@ jobs:
       contents: read
       pull-requests: read  # repository-metadata-action queries PR data
     # yamllint disable-line rule:line-length
-    uses: lfreleng-actions/python-workflows/.github/workflows/build-test.yaml@e6e1ea99f84dc0993a14759c749555268a393cab  # v0.6.0
+    uses: lfreleng-actions/python-workflows/.github/workflows/build-test.yaml@d9336718eea42197699c233134f3b34a69520012  # v0.7.0
     with:
       # Grype policy: findings block only when the change touched a
       # dependency file; gate on fixable findings in declared
@@ -61,17 +61,23 @@ jobs:
       contents: read
       pull-requests: read  # repository-metadata-action queries PR data
     # yamllint disable-line rule:line-length
-    uses: lfreleng-actions/docker-workflows/.github/workflows/build-test.yaml@0a748986df8f93fd610655ee4ffe357cf6d06c4a  # v0.11.3
+    uses: lfreleng-actions/docker-workflows/.github/workflows/build-test.yaml@dfb21cf08232d24154ac19a178c9accc5bfb7877  # v0.12.0
     with:
       # yamllint disable-line rule:line-length
       images: '[{"name": "http-api-tool-docker", "context": ".", "dockerfile": "docker/Containerfile", "build_args": ["VERSION=0.0.0.dev0"]}]'
       test_command: 'docker run --rm http-api-tool-docker:verify --help'
-      # docker-workflows v0.11.3 has no only-fixed or dependency-policy
-      # inputs, and the Debian base image always carries unfixed
-      # findings, so the image scan reports rather than gates until a
-      # release with the Grype policy inputs ships
+      # Grype policy: findings block only when the change touched the
+      # Containerfile or a Python dependency file, which the image
+      # installs. An image SBOM carries no dependency graph, so every
+      # finding counts as declared and the policy is 'all'
+      grype_gate_when: 'dependencies-changed'
+      grype_dependency_ecosystems: 'docker,python'
+      grype_dependency_policy: 'all'
+      grype_only_fixed: true
+      # The Debian base image always carries findings with no published
+      # fix; only_fixed reports those without gating, and the gate
+      # fails on fixable critical findings
       grype_fail_on: 'critical'
-      grype_permit_fail: true
       # Both family calls run in parallel and share the Grype database
       # cache prefix, whose keys rotate on the database build time, so
       # one job at most may save it. The Python call has no cache mode
