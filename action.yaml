@@ -167,6 +167,19 @@ runs:
     # A composite action inherits the caller job's environment, so no
     # step below may let a caller variable (PATH, UV_PYTHON, VIRTUAL_ENV,
     # CONDA_PREFIX, PYTHON* and the like) choose the interpreter it runs.
+    # A caller's UV_NO_MODIFY_PATH would stop setup-uv putting its own
+    # uv and tool-bin-dir on PATH, leaving the caller's PATH to choose.
+    # No step can unset an inherited variable, so refuse it instead.
+    - name: Refuse an inherited UV_NO_MODIFY_PATH
+      if: inputs.deploy == 'uvx'
+      shell: bash
+      run: |
+        if [ -n "${UV_NO_MODIFY_PATH+set}" ]; then
+          echo "::error::UV_NO_MODIFY_PATH is set in the caller's" \
+            "environment; unset it before calling this action."
+          exit 1
+        fi
+
     # setup-uv's only uv call for these inputs is "uv python find",
     # whose result it executes. An invalid preference makes uv refuse
     # its arguments before any lookup; setup-uv then reports the
