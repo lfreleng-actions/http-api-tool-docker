@@ -161,6 +161,13 @@ for every step, and `setup-uv` runs its helpers from it, so a caller
 that puts a directory from its checkout on `PATH` is outside what a
 composite action can defend against.
 
+The uvx path fails when the caller's environment sets
+`UV_NO_MODIFY_PATH`, at any value. That setting stops `setup-uv`
+putting its own `uv` and tool directory on `PATH`, and a composite
+action cannot unset a variable it inherits, so the action refuses to
+run rather than let the caller's `PATH` choose. Remove it from the
+`env` that sets it before calling this action.
+
 #### 2. Docker Deployment (Containerized)
 
 Uses Docker to run the tool in a container. This is useful when you need
