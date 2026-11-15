@@ -996,6 +996,160 @@ jobs:
             exit 1
           fi
 
+  # The uvx path refuses a caller's UV_NO_MODIFY_PATH, even an empty
+  # one, before setup-uv runs. Each leg calls the action with the same
+  # inputs against a live endpoint, so the variable alone decides the
+  # outcome. A refused leg must also leave no trace of a uv install.
+  uv-no-modify-path-guard:
+    name: 'UV_NO_MODIFY_PATH Guard (${{ matrix.case }})'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: 'unset'
+            expected: 'success'
+          - case: 'empty'
+            value: ''
+            expected: 'failure'
+          - case: 'one'
+            value: '1'
+            expected: 'failure'
+    steps:
+      - name: 'Load egress allow-list (block mode)'
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/harden-runner-block-action@36a02f4a61b27e7a0a91e1df2134abe9545cf54e  # v0.16.1
+        with:
+          config: ${{ env.HARDEN_RUNNER_ALLOWLIST }}
+          allow_list_summary: 'false'
+
+      - name: 'Harden runner (block)'
+        # yamllint disable-line rule:line-length
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43  # v2.22.3
+        with:
+          egress-policy: 'block'
+          allowed-endpoints: >
+            ${{ env.CONNECTION_ALLOW_LIST }}
+
+      - name: Start a local HTTP service
+        run: |
+          set -euo pipefail
+          site="$RUNNER_TEMP/guard-site"
+          mkdir -p "$site"
+          echo 'guard test' > "$site/index.html"
+          nohup python3 -I -m http.server 8767 --bind 127.0.0.1 \
+            --directory "$site" > "$RUNNER_TEMP/guard-site.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8767/; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::The local HTTP service did not start"
+          cat "$RUNNER_TEMP/guard-site.log"
+          exit 1
+
+      - name: Set UV_NO_MODIFY_PATH, as a caller would
+        if: matrix.case != 'unset'
+        env:
+          VALUE: ${{ matrix.value }}
+        run: echo "UV_NO_MODIFY_PATH=$VALUE" >> "$GITHUB_ENV"
+
+      # Proves the leg tests what it names: an empty value must reach
+      # the action as a defined variable, not as an unset one.
+      - name: Check the caller's UV_NO_MODIFY_PATH
+        env:
+          CASE: ${{ matrix.case }}
+          VALUE: ${{ matrix.value }}
+        run: |
+          set -uo pipefail
+          if [[ "$CASE" == unset ]]; then
+            if [[ -n "${UV_NO_MODIFY_PATH+set}" ]]; then
+              echo "::error::UV_NO_MODIFY_PATH is set in the unset leg"
+              exit 1
+            fi
+          elif [[ -z "${UV_NO_MODIFY_PATH+set}" ]] \
+            || [[ "$UV_NO_MODIFY_PATH" != "$VALUE" ]]; then
+            echo "::error::UV_NO_MODIFY_PATH is not set to '$VALUE'"
+            exit 1
+          fi
+
+      # setup-uv downloads uv into $RUNNER_TEMP before caching it in
+      # the tool cache, and may export PATH and UV_* settings; the next
+      # action step creates its own directory in $RUNNER_TEMP. The
+      # runner's own step scripts and file commands, and this job's
+      # guard-* files, are left out.
+      - name: Snapshot the runner before the action
+        run: |
+          set -euo pipefail
+          {
+            find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 \
+              ! -name '*.sh' ! -name '_runner_file_commands' \
+              ! -name 'guard-*'
+            find "$RUNNER_TOOL_CACHE" -mindepth 1 -maxdepth 2 || true
+            env | grep -E '^(PATH|UV_[A-Z0-9_]*)=' || true
+          } | sort > "$RUNNER_TEMP/guard-before"
+
+      - name: Run the action
+        id: run
+        uses: $/
+        continue-on-error: true
+        with:
+          url: 'http://127.0.0.1:8767/'
+          service_name: 'UV_NO_MODIFY_PATH Guard (${{ matrix.case }})'
+          expected_http_code: 200
+          retries: 3
+
+      - name: Check the outcome and that a refusal installed nothing
+        env:
+          CASE: ${{ matrix.case }}
+          EXPECTED: ${{ matrix.expected }}
+          OUTCOME: ${{ steps.run.outcome }}
+          HTTP_CODE: ${{ steps.run.outputs.response_http_code }}
+        run: |
+          set -euo pipefail
+          {
+            find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 \
+              ! -name '*.sh' ! -name '_runner_file_commands' \
+              ! -name 'guard-*'
+            find "$RUNNER_TOOL_CACHE" -mindepth 1 -maxdepth 2 || true
+            env | grep -E '^(PATH|UV_[A-Z0-9_]*)=' || true
+          } | sort > "$RUNNER_TEMP/guard-after"
+          added=$(comm -13 "$RUNNER_TEMP/guard-before" \
+            "$RUNNER_TEMP/guard-after")
+          work_dir="$RUNNER_TEMP/http-api-tool-docker"
+          failed=false
+          if [[ "$OUTCOME" != "$EXPECTED" ]]; then
+            echo "::error::The $CASE leg's outcome was '$OUTCOME'," \
+              "expected '$EXPECTED'"
+            failed=true
+          fi
+          if [[ "$EXPECTED" == success ]]; then
+            if [[ "$HTTP_CODE" != "200" ]]; then
+              echo "::error::Unexpected response_http_code: '$HTTP_CODE'"
+              failed=true
+            fi
+            # Control: the snapshot sees the install a refusal must not
+            if ! grep -qxF "$work_dir" <<< "$added"; then
+              echo "::error::The snapshot missed the action's install"
+              failed=true
+            fi
+          else
+            if [[ -n "$HTTP_CODE" ]]; then
+              echo "::error::The refused action still ran the check"
+              failed=true
+            fi
+            if [[ -n "$added" ]]; then
+              echo "::error::The refused action changed the runner:"
+              echo "$added"
+              failed=true
+            fi
+          fi
+          [[ "$failed" == false ]]
+
   # Docker integration test for PRs (using GitHub Action instead of Docker CLI)
   docker-integration-test-pr:
     name: 'Docker Integration Test (PR)'
