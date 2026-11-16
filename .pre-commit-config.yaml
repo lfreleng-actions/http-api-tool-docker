@@ -73,7 +73,7 @@ repos:
         args: [--config-file=.yamllint]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: c0f278f1254ccc8fb09676bcdb8d847e7db493e5  # frozen: v0.17.4
+    rev: ef6cf06c079dd6b299dfc720b0f14400c9d168e1  # frozen: v0.17.5
     hooks:
       - id: ruff
         files: ^(src|tests|scripts)/.+\.py$
@@ -117,7 +117,7 @@ repos:
       - id: reuse
 
   - repo: https://github.com/kjanat/actionlint
-    rev: 2da2ceb4af2c7ecc48f5b9311d85080c3971b5f0  # frozen: v1.17.0
+    rev: 1a9278318c43b72cdf644214128fb0786d210147  # frozen: v1.17
     hooks:
       - id: actionlint-shellcheck
 
@@ -133,7 +133,7 @@ repos:
       - id: basedpyright
 
   - repo: https://github.com/lfreleng-actions/gha-workflow-linter
-    rev: 1a5b59be8718092559caea422dd34aad466f51f3  # frozen: v1.11.0
+    rev: 380c07e2a17ef43c3c5b8579db3b4a46af475bf5  # frozen: v1.12.0
     hooks:
       - id: gha-workflow-linter
         args: [lint, .]
