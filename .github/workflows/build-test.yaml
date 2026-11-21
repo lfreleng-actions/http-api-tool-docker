@@ -61,7 +61,7 @@ jobs:
       contents: read
       pull-requests: read  # repository-metadata-action queries PR data
     # yamllint disable-line rule:line-length
-    uses: lfreleng-actions/docker-workflows/.github/workflows/build-test.yaml@dfb21cf08232d24154ac19a178c9accc5bfb7877  # v0.12.0
+    uses: lfreleng-actions/docker-workflows/.github/workflows/build-test.yaml@55ab8c97e089c14dbec239953e5bb81464f668bb  # v0.13.1
     with:
       # yamllint disable-line rule:line-length
       images: '[{"name": "http-api-tool-docker", "context": ".", "dockerfile": "docker/Containerfile", "build_args": ["VERSION=0.0.0.dev0"]}]'
