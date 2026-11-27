@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Linux Foundation
+#
+# Gives Code Monkey sessions on this repository sudo and Docker
+# (lfreleng-actions/github-code-monkey-bot, docs/DESIGN.md section 4.1).
+# Only this file's presence at the root of the default branch counts;
+# the bot never reads its content.
+#
+# Why: this repository ships the http-api-tool image built from
+# docker/Containerfile, and its tests build that image and run it
+# against a go-httpbin container. A change to the tool cannot be
+# checked as shipped unless the session can build and run containers.
+#
+# The grant also gives the session the means to undo harden-runner, so
+# remove this file once the repository no longer needs it.
